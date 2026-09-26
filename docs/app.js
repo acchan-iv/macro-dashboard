@@ -14,7 +14,8 @@ const C = { blue: '#2a78d6', orange: '#d9571f', ma: '#5b6168', grid: '#e6e8eb', 
 let IND = null, SUM = null, HIST = null;
 const seriesCache = {};
 let filter = 'all', search = '';
-let range = 'A'; // 表示範囲の初期値＝重要以上（毎回この状態で始まる）
+let range = 'A';
+let recentRange = 'A'; // 最近の発表結果の表示範囲：初期値＝重要以上 // 表示範囲の初期値＝重要以上（毎回この状態で始まる）
 const RANGE_MAX = { S: 0, A: 1, all: 9 };
 const inRange = (i) => (TIER_ORDER[i.tier] ?? 9) <= RANGE_MAX[range];
 let favs = loadFavs();
@@ -107,8 +108,19 @@ function renderQuestions() {
 }
 
 function renderRecent() {
-  const r = SUM.recent || [];
-  if (!r.length) { $('recent').innerHTML = '<p class="empty">直近1週間に発表された指標はありません。</p>'; return; }
+  const all = SUM.recent || [];
+  const r = all.filter((x) => recentRange === 'all' || (TIER_ORDER[x.tier] ?? 9) <= RANGE_MAX.A);
+  const hiddenN = all.length - r.length;
+  const toggle = `<div class="range" role="radiogroup" aria-label="最近の発表結果の表示範囲" style="margin-bottom:8px">
+      <span class="range-label">表示範囲</span>
+      <button class="rbtn rrange" data-rr="A" role="radio" aria-checked="${recentRange === 'A'}">重要以上</button>
+      <button class="rbtn rrange" data-rr="all" role="radio" aria-checked="${recentRange === 'all'}">すべて</button>
+    </div>${hiddenN ? `<span class="note">　この範囲で隠れている発表：<b>${hiddenN}件</b></span>` : ''}`;
+  const bindToggle = () => document.querySelectorAll('.rrange').forEach((b) => b.addEventListener('click', () => { recentRange = b.dataset.rr; renderRecent(); }));
+  if (!r.length) {
+    $('recent').innerHTML = toggle + `<p class="empty">${all.length ? 'この範囲に該当する発表はありません。' : '直近1週間に発表された指標はありません。'}</p>`;
+    bindToggle(); return;
+  }
   const byId = Object.fromEntries(IND.indicators.map((i) => [i.id, i]));
   const rows = r.map((x) => {
     const i = byId[x.id] || x;
@@ -121,8 +133,9 @@ function renderRecent() {
       <span class="rchg ${changeClass(i, x.prev, x.latest)}">${arrow(x.change)} ${fmtSigned(x.change, x.decimals)}${esc(cu)}</span>
     </div>`;
   }).join('');
-  $('recent').innerHTML = `<div class="rlist">${rows}</div>
+  $('recent').innerHTML = toggle + `<div class="rlist">${rows}</div>
     <p class="note">日付は米国の発表日。色は変化が景気・物価にとって良い方向なら緑、悪い方向なら赤（金利など方向で良し悪しを決めない指標は黒）。市場予想との比較は未対応。</p>`;
+  bindToggle();
   document.querySelectorAll('.rrow').forEach((el) => {
     el.addEventListener('click', () => openModal(el.dataset.id));
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') openModal(el.dataset.id); });
@@ -155,7 +168,7 @@ function renderChips() {
 function renderGroups() {
   const qs = [...IND.questions.map((q) => ({ id: q.id, name: q.name, question: q.question })), { id: 'reference', name: '参考', question: '判定には使わない指標' }];
   let hidden = 0;
-  document.querySelectorAll('.rbtn').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.range === range)));
+  document.querySelectorAll('.rbtn[data-range]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.range === range)));
   const stateOf = Object.fromEntries(SUM.questions.map((q) => [q.id, q.state]));
   const html = qs.map((q) => {
     let list = IND.indicators.filter((i) => i.question === q.id);
@@ -470,7 +483,7 @@ function renderHistory() {
     <p class="note">「〇か月前から警戒」＝景気後退が始まる前の24か月以内で、最初に警戒が出た時期。当たり率＝警戒が出た月のうち、24か月以内に景気後退が始まった割合（直近24か月は結果が未確定のため除外）。インフレと金融環境は景気後退を当てるための問いではないので、当たり率は参考です。</p>`;
 }
 
-document.querySelectorAll('.rbtn').forEach((b) => b.addEventListener('click', () => { range = b.dataset.range; renderGroups(); }));
+document.querySelectorAll('.rbtn[data-range]').forEach((b) => b.addEventListener('click', () => { range = b.dataset.range; renderGroups(); }));
 
 // ---------- AIに渡す ----------
 async function copyText(text) {
