@@ -163,10 +163,17 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
 .rval small { color: var(--text-2); margin-left: 6px; font-size: 12px; }
 .rprev { color: var(--text-2); }
 .rchg { font-weight: 700; }
+.rval, .rprev, .rchg { white-space: nowrap; }
 @media (max-width: 720px) {
-  .rrow { grid-template-columns: auto 1fr 1fr; row-gap: 2px; }
-  .rdate { grid-column: 1 / 2; }
-  .rname { grid-column: 2 / 4; }
-  .rval small { display: block; margin-left: 0; }
+  /* 1段目：日付＋指標名／2段目：結果と変化／3段目：前回とデータの月 */
+  .rrow { grid-template-columns: 1fr auto; row-gap: 2px; }
+  .rdate { grid-column: 1 / -1; }
+  .rname { grid-column: 1 / -1; }
+  .rdate { grid-row: 1; }
+  .rname { grid-row: 2; }
+  .rval { grid-column: 1 / 2; grid-row: 3; }
+  .rchg { grid-column: 2 / 3; grid-row: 3; text-align: right; }
+  .rprev { grid-column: 1 / -1; grid-row: 4; font-size: 13px; }
+  .rval small { margin-left: 6px; }
 }
 .chg { row-gap: 2px; }
