@@ -90,7 +90,8 @@ class Fred:
         except Exception:  # noqa: BLE001
             return None
 
-    def next_release_dates(self, sid: str, today: dt.date) -> list[str]:
+    def release_dates(self, sid: str, today: dt.date) -> list[str]:
+        """発表日の一覧（米国日付）。直近10日の実績と今後の予定を返す"""
         if self.offline:
             f = self.offline / "_releases.json"
             if f.exists():
@@ -102,10 +103,10 @@ class Fred:
             if rid not in self.release_cache:
                 d = self._get(
                     "release/dates", release_id=rid,
-                    realtime_start=today.isoformat(), realtime_end="9999-12-31",
-                    include_release_dates_with_no_data="true", sort_order="asc", limit=20,
+                    realtime_start=(today - dt.timedelta(days=10)).isoformat(), realtime_end="9999-12-31",
+                    include_release_dates_with_no_data="true", sort_order="asc", limit=40,
                 )
-                self.release_cache[rid] = [x["date"] for x in d.get("release_dates", []) if x["date"] >= today.isoformat()]
+                self.release_cache[rid] = sorted({x["date"] for x in d.get("release_dates", [])})
             return self.release_cache[rid]
         except Exception as e:  # noqa: BLE001
             self.warnings.append(f"発表予定の取得に失敗: {sid} ({e})")
@@ -591,6 +592,16 @@ def build_ai_text(generated, today, settings, qcfg, q_out, ind_out, tseries, not
         L.append(f"- {i['name']}：{src}／{FREQ_JA[i['freq']]}／{TRANSFORM_JA[i['transform']]}（{i['unit'] or '指数'}）。{i['desc']} 見方：{i['read']}")
     L.append("")
 
+    L.append("## 2-2. 最近の発表結果（直近1週間・米国日付）")
+    rec = [i for i in ind_out if i.get("ok") and i.get("last_release")]
+    rec.sort(key=lambda i: (i["last_release"], -TIER_ORDER.get(i.get("tier"), 9)), reverse=True)
+    if not rec:
+        L.append("- なし")
+    for i in rec:
+        cu = "pt" if i["unit"] == "%" else i["unit"]
+        L.append(f"- {i['last_release']} {i['name']}【{tl.get(i.get('tier'), '')}】：{_n(i['latest'], i['decimals'])}{i['unit']}"
+                 f"（{i['latest_date']}分、前回 {_n(i['prev'], i['decimals'])}{i['unit']}、変化 {_s(i['change'], i['decimals'])}{cu}）")
+    L.append("")
     L.append("## 3. 気になる動き")
     if not (notable or stale or failed or fallback_used):
         L.append("- 特になし")
@@ -731,9 +742,12 @@ def main() -> int:
 
         m = indicator_metrics(ind, raw, v, settings, today)
         m["source"] = source
-        nxt = [] if ind["freq"] == "D" or ind.get("derived") else fred.next_release_dates(ind["fred"], today)
+        rd = [] if ind["freq"] == "D" or ind.get("derived") else fred.release_dates(ind["fred"], today)
+        nxt = [d for d in rd if d >= today.isoformat()]
+        past = [d for d in rd if (today - dt.timedelta(days=8)).isoformat() <= d < today.isoformat()]
         m["next_release"] = nxt[0] if nxt else None
         m["upcoming"] = nxt[:3]
+        m["last_release"] = past[-1] if past else None
         meta = {k: ind.get(k) for k in (
             "id", "fred", "derived", "name", "question", "role", "tier", "freq", "transform", "unit", "decimals",
             "direction", "zones", "ref_line", "desc", "read", "good", "caution", "citation")}
@@ -782,6 +796,15 @@ def main() -> int:
                 for d, x in sorted(cal.items())]
     tier_label = settings.get("tier_labels", {})
 
+    # 最近の発表結果（直近1週間に発表があった指標。新しい順→重要度順）
+    recent = [
+        {"date": i["last_release"], "id": i["id"], "name": i["name"], "tier": i.get("tier"), "latest": i["latest"],
+         "latest_date": i["latest_date"], "prev": i["prev"], "change": i["change"], "unit": i["unit"],
+         "decimals": i["decimals"], "direction": i["direction"], "freq": i["freq"], "big_move": i["big_move"]}
+        for i in ind_out if i.get("ok") and i.get("last_release")
+    ]
+    recent.sort(key=lambda x: (x["date"], -TIER_ORDER.get(x["tier"], 9)), reverse=True)
+
     mark = {"good": "良好", "caution": "注意", "warn": "警戒", "na": "データ不足"}
     lines = [f"【米国マクロ指標トラッカー {today.isoformat()}】"]
     for q in q_out:
@@ -804,7 +827,7 @@ def main() -> int:
         **common,
         "questions": q_out,
         "cycle": cycle_now if settings.get("show_cycle") else None,
-        "notable": notable, "stale": stale, "upcoming": upcoming,
+        "notable": notable, "stale": stale, "upcoming": upcoming, "recent": recent,
         "failed": failed, "fallback_used": fallback_used, "warnings": fred.warnings,
         "handoff_text": "\n".join(lines),
     }

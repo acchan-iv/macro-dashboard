@@ -152,3 +152,21 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
 /* AIに渡す */
 .aibox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; padding: 10px 12px; border: 2px solid #111418; border-radius: 10px; }
 .aibox .btn { font-weight: 700; }
+
+/* 最近の発表結果 */
+.rlist { border: 1px solid var(--line); border-radius: 8px; }
+.rrow { display: grid; grid-template-columns: 96px minmax(220px, 1.6fr) 1fr 1fr 1fr; gap: 8px; align-items: baseline; padding: 8px 12px; border-top: 1px solid var(--line); cursor: pointer; }
+.rrow:first-child { border-top: 0; }
+.rrow:hover, .rrow:focus-visible { background: #f3f4f6; outline: none; }
+.rdate { font-weight: 700; }
+.rval b { font-size: 18px; }
+.rval small { color: var(--text-2); margin-left: 6px; font-size: 12px; }
+.rprev { color: var(--text-2); }
+.rchg { font-weight: 700; }
+@media (max-width: 720px) {
+  .rrow { grid-template-columns: auto 1fr 1fr; row-gap: 2px; }
+  .rdate { grid-column: 1 / 2; }
+  .rname { grid-column: 2 / 4; }
+  .rval small { display: block; margin-left: 0; }
+}
+.chg { row-gap: 2px; }

@@ -72,7 +72,7 @@ async function load() {
   document.title = IND.settings.site_title;
   $('title').textContent = IND.settings.site_title;
   IND.questions.forEach((q) => { QNAMES[q.id] = q.name; });
-  renderHeader(); renderQuestions(); renderNotable(); renderCalendar(); renderChips(); renderGroups(); renderHistory();
+  renderHeader(); renderRecent(); renderQuestions(); renderNotable(); renderCalendar(); renderChips(); renderGroups(); renderHistory();
 }
 
 function renderHeader() {
@@ -101,6 +101,29 @@ function renderQuestions() {
   if (IND.settings.show_cycle && SUM.cycle) {
     $('cycle').innerHTML = `<div class="cyclebox"><b>景気サイクル（参考）：${esc(SUM.cycle)}</b>　景気の判定×FF金利の6か月の方向で機械的に分類。2か月続けて同じ判定の時だけ切り替えています。</div>`;
   }
+}
+
+function renderRecent() {
+  const r = SUM.recent || [];
+  if (!r.length) { $('recent').innerHTML = '<p class="empty">直近1週間に発表された指標はありません。</p>'; return; }
+  const byId = Object.fromEntries(IND.indicators.map((i) => [i.id, i]));
+  const rows = r.map((x) => {
+    const i = byId[x.id] || x;
+    const cu = x.unit === '%' ? 'pt' : x.unit;
+    return `<div class="rrow" role="button" tabindex="0" data-id="${x.id}">
+      <span class="rdate">${mdw(x.date)}</span>
+      <span class="rname">${tierChip(x.tier)}${esc(x.name)}${x.big_move ? '<span class="big">大きな変化</span>' : ''}</span>
+      <span class="rval"><b>${fmt(x.latest, x.decimals)}</b>${esc(x.unit)}<small>${dateLabel(x.latest_date, x.freq)}分</small></span>
+      <span class="rprev">前回 ${fmt(x.prev, x.decimals)}${esc(x.unit)}</span>
+      <span class="rchg ${changeClass(i, x.prev, x.latest)}">${arrow(x.change)} ${fmtSigned(x.change, x.decimals)}${esc(cu)}</span>
+    </div>`;
+  }).join('');
+  $('recent').innerHTML = `<div class="rlist">${rows}</div>
+    <p class="note">日付は米国の発表日。色は変化が景気・物価にとって良い方向なら緑、悪い方向なら赤（金利など方向で良し悪しを決めない指標は黒）。市場予想との比較は未対応。</p>`;
+  document.querySelectorAll('.rrow').forEach((el) => {
+    el.addEventListener('click', () => openModal(el.dataset.id));
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') openModal(el.dataset.id); });
+  });
 }
 
 function renderNotable() {

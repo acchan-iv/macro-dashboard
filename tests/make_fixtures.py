@@ -97,7 +97,8 @@ for ind in cfg["indicators"]:
             obs[k]["value"] = "."
     (OUT / f"{sid}.json").write_text(json.dumps({"observations": obs}), encoding="utf-8")
     if freq != "D":
-        releases[sid] = [(END + pd.Timedelta(days=int(rng.integers(2, 25)))).strftime("%Y-%m-%d")]
+        releases[sid] = sorted([(END + pd.Timedelta(days=int(rng.integers(2, 25)))).strftime("%Y-%m-%d"),
+                                (END - pd.Timedelta(days=int(rng.integers(0, 12)))).strftime("%Y-%m-%d")])
 
 idx = pd.date_range("1985-01-01", END - pd.Timedelta(days=60), freq="MS")
 usrec = rec_mask(idx).astype(int)
