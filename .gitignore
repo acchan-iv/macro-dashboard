@@ -1,0 +1,6 @@
+# データはGitHub Actionsが毎日作るのでリポジトリには入れない
+docs/data/
+tests/fixtures/
+__pycache__/
+*.pyc
+.env
