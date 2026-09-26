@@ -6,95 +6,267 @@
     "big_move_z": 2.0,
     "percentile_years": 10,
     "show_cycle": false,
-    "site_title": "米国マクロ指標トラッカー"
+    "site_title": "米国マクロ指標トラッカー",
+    "tier_labels": {
+      "S": "超重要",
+      "A": "重要",
+      "B": "中",
+      "C": "低"
+    },
+    "tier_rule": "重要度＝発表の瞬間に相場が動く大きさ＋FRBの金融政策への直結度（PAN式の★と『最重要4つ・補助8つ』を元に設定）。判定に使うかどうか（主役・補助）とは別の物差し。"
   },
   "questions": [
     {
       "id": "growth",
       "name": "景気",
       "question": "景気は拡大しているか",
-      "main": ["gdp", "indpro"],
+      "main": [
+        "gdp",
+        "indpro"
+      ],
       "rule_text": "良好＝実質GDP 1.5%以上 かつ 鉱工業生産の前年比プラス／警戒＝実質GDPマイナス または 鉱工業生産の前年比 −2%未満",
-      "params": {"gdp_good": 1.5, "ip_good": 0.0, "gdp_bad": 0.0, "ip_bad": -2.0}
+      "params": {
+        "gdp_good": 1.5,
+        "ip_good": 0.0,
+        "gdp_bad": 0.0,
+        "ip_bad": -2.0
+      }
     },
     {
       "id": "jobs",
       "name": "雇用",
       "question": "雇用は崩れていないか",
-      "main": ["payems", "sahm"],
+      "main": [
+        "payems",
+        "sahm"
+      ],
       "rule_text": "良好＝サーム・ルール0.3未満 かつ 雇用者数の3か月平均が＋10万人超／警戒＝サーム・ルール0.5以上 または 3か月平均がマイナス",
-      "params": {"sahm_good": 0.3, "sahm_bad": 0.5, "nfp3_good": 10.0, "nfp3_bad": 0.0}
+      "params": {
+        "sahm_good": 0.3,
+        "sahm_bad": 0.5,
+        "nfp3_good": 10.0,
+        "nfp3_bad": 0.0
+      }
     },
     {
       "id": "inflation",
       "name": "インフレ",
       "question": "インフレは2%に向かっているか",
-      "main": ["corepce", "corecpi"],
+      "main": [
+        "corepce",
+        "corecpi"
+      ],
       "rule_text": "良好＝コアPCEとコアCPIがどちらも2.5%以下／警戒＝どちらかが3.5%超 かつ 3か月前より上昇",
-      "params": {"good_max": 2.5, "bad_min": 3.5}
+      "params": {
+        "good_max": 2.5,
+        "bad_min": 3.5
+      }
     },
     {
       "id": "financial",
       "name": "金融環境",
       "question": "金融環境は締まっているか",
-      "main": ["realrate", "dgs2"],
+      "main": [
+        "realrate",
+        "dgs2"
+      ],
       "rule_text": "良好（緩い）＝実質金利1%未満 または 2年債が3か月で0.3pt以上低下／警戒（きつい）＝実質金利2%超 かつ 2年債が3か月前より上昇",
-      "params": {"rr_good": 1.0, "rr_bad": 2.0, "d2y_good": -0.3}
+      "params": {
+        "rr_good": 1.0,
+        "rr_bad": 2.0,
+        "d2y_good": -0.3
+      }
     },
     {
       "id": "recession",
       "name": "後退予兆",
       "question": "景気後退の予兆はあるか",
-      "main": ["t10y3m", "permit"],
+      "main": [
+        "t10y3m",
+        "permit"
+      ],
       "rule_text": "良好＝10年-3か月差がプラス（直近12か月に逆転なし）かつ 建築許可の前年比 −10%以上／警戒＝逆イールド解消から12か月以内 または 建築許可の前年比 −20%未満",
-      "params": {"permit_good": -10.0, "permit_bad": -20.0}
+      "params": {
+        "permit_good": -10.0,
+        "permit_bad": -20.0
+      }
     }
   ],
   "indicators": [
     {
-      "id": "gdp", "fred": "A191RL1Q225SBEA", "name": "実質GDP成長率", "question": "growth", "role": "main",
-      "freq": "Q", "transform": "none", "unit": "%", "decimals": 1, "direction": "up", "pub_lag_days": 120,
-      "zones": [{"lt": 0, "s": "warn"}, {"lt": 1.5, "s": "caution"}, {"lt": 3.5, "s": "good"}, {"s": "caution"}],
-      "ref_line": {"value": 0, "label": "0%（成長と縮小の境目）"},
+      "id": "gdp",
+      "fred": "A191RL1Q225SBEA",
+      "name": "実質GDP成長率",
+      "question": "growth",
+      "role": "main",
+      "tier": "A",
+      "freq": "Q",
+      "transform": "none",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 120,
+      "zones": [
+        {
+          "lt": 0,
+          "s": "warn"
+        },
+        {
+          "lt": 1.5,
+          "s": "caution"
+        },
+        {
+          "lt": 3.5,
+          "s": "good"
+        },
+        {
+          "s": "caution"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%（成長と縮小の境目）"
+      },
       "desc": "米国経済全体がどれだけ成長したかを示す最も包括的な数字。前期比を年率に直した値。",
       "read": "四半期に一度、1か月遅れで出る『結果』の指標。速報性はないので、方向の確認に使う。",
       "good": "1.5〜3.5%程度の安定した成長。",
       "caution": "マイナス（縮小）。2四半期連続のマイナスは景気後退の目安とされる。3.5%超は過熱気味。"
     },
     {
-      "id": "indpro", "fred": "INDPRO", "name": "鉱工業生産（前年比）", "question": "growth", "role": "main",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 1, "direction": "up", "pub_lag_days": 47,
-      "zones": [{"lt": -2, "s": "warn"}, {"lt": 0, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0%（前年並み）"},
+      "id": "indpro",
+      "fred": "INDPRO",
+      "name": "鉱工業生産（前年比）",
+      "question": "growth",
+      "role": "main",
+      "tier": "B",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 47,
+      "zones": [
+        {
+          "lt": -2,
+          "s": "warn"
+        },
+        {
+          "lt": 0,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%（前年並み）"
+      },
       "desc": "工場・鉱山・電力の生産量。毎月出るので、GDPの間の空白期間を埋める。",
       "read": "GDPより早く実体経済の動きが分かる。前年比がマイナスに沈むと製造業の減速。",
       "good": "前年比プラスで推移。",
       "caution": "前年比 −2%未満。過去の景気後退期はほぼこの水準に落ちている。"
     },
     {
-      "id": "retail", "fred": "RSAFS", "name": "小売売上高（前月比）", "question": "growth", "role": "sub",
-      "freq": "M", "transform": "mom_pct", "unit": "%", "decimals": 2, "direction": "up", "pub_lag_days": 45,
-      "zones": [{"lt": -0.5, "s": "warn"}, {"lt": 0.2, "s": "caution"}, {"lt": 1.0, "s": "good"}, {"s": "caution"}],
-      "ref_line": {"value": 0, "label": "0%（増加と減少の境目）"},
+      "id": "retail",
+      "fred": "RSAFS",
+      "name": "小売売上高（前月比）",
+      "question": "growth",
+      "role": "sub",
+      "tier": "A",
+      "freq": "M",
+      "transform": "mom_pct",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "up",
+      "pub_lag_days": 45,
+      "zones": [
+        {
+          "lt": -0.5,
+          "s": "warn"
+        },
+        {
+          "lt": 0.2,
+          "s": "caution"
+        },
+        {
+          "lt": 1.0,
+          "s": "good"
+        },
+        {
+          "s": "caution"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%（増加と減少の境目）"
+      },
       "desc": "小売店・飲食店の売上。個人消費（GDPの約7割）を最も早く映す。",
       "read": "月ごとのブレが大きい。1回の数字より3か月平均の向きを見る。物価調整前の名目値。",
       "good": "前月比0.2〜1.0%程度の緩やかな増加。",
       "caution": "マイナスが続く、または1%超の急増（一時要因の可能性）。"
     },
     {
-      "id": "durable", "fred": "DGORDER", "name": "耐久財受注（前年比）", "question": "growth", "role": "sub",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 1, "direction": "up", "pub_lag_days": 57,
-      "zones": [{"lt": -5, "s": "warn"}, {"lt": 0, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0%（前年並み）"},
+      "id": "durable",
+      "fred": "DGORDER",
+      "name": "耐久財受注（前年比）",
+      "question": "growth",
+      "role": "sub",
+      "tier": "B",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 57,
+      "zones": [
+        {
+          "lt": -5,
+          "s": "warn"
+        },
+        {
+          "lt": 0,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%（前年並み）"
+      },
       "desc": "3年以上使う製品（機械・航空機など）の新規受注額。企業の設備投資意欲を示す。",
       "read": "航空機の大口受注で大きく振れる。前年比の方向で見る。",
       "good": "前年比プラス。",
       "caution": "前年比 −5%未満。設備投資の冷え込み。"
     },
     {
-      "id": "umich", "fred": "UMCSENT", "name": "ミシガン大学消費者信頼感", "question": "growth", "role": "sub",
-      "freq": "M", "transform": "none", "unit": "", "decimals": 1, "direction": "up", "pub_lag_days": 45,
-      "zones": [{"lt": 60, "s": "warn"}, {"lt": 80, "s": "caution"}, {"s": "good"}],
+      "id": "umich",
+      "fred": "UMCSENT",
+      "name": "ミシガン大学消費者信頼感",
+      "question": "growth",
+      "role": "sub",
+      "tier": "B",
+      "freq": "M",
+      "transform": "none",
+      "unit": "",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 45,
+      "zones": [
+        {
+          "lt": 60,
+          "s": "warn"
+        },
+        {
+          "lt": 80,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
       "ref_line": null,
       "desc": "消費者へのアンケートで測る景気の『気分』。",
       "read": "FREDではデータ提供元の要請で1か月遅れて掲載される。気分は実際の消費とズレることも多い。",
@@ -103,39 +275,137 @@
       "citation": "Surveys of Consumers, University of Michigan, University of Michigan: Consumer Sentiment © [UMCSENT], retrieved from FRED, Federal Reserve Bank of St. Louis"
     },
     {
-      "id": "philly", "fred": "GACDFSA066MSFRBPHI", "name": "フィラデルフィア連銀 製造業景況", "question": "growth", "role": "sub",
-      "freq": "M", "transform": "none", "unit": "", "decimals": 1, "direction": "up", "pub_lag_days": 20,
-      "zones": [{"lt": -10, "s": "warn"}, {"lt": 0, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0（拡大と縮小の境目）"},
+      "id": "philly",
+      "fred": "GACDFSA066MSFRBPHI",
+      "name": "フィラデルフィア連銀 製造業景況",
+      "question": "growth",
+      "role": "sub",
+      "tier": "B",
+      "freq": "M",
+      "transform": "none",
+      "unit": "",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 20,
+      "zones": [
+        {
+          "lt": -10,
+          "s": "warn"
+        },
+        {
+          "lt": 0,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0（拡大と縮小の境目）"
+      },
       "desc": "フィラデルフィア地区の製造業アンケート。『良くなった』−『悪くなった』の割合。",
       "read": "ISM製造業指数（FREDでは入手不可）の代わり。毎月の指標で最も早く、その月のうちに出る。",
       "good": "0以上（拡大）。",
       "caution": "−10未満（はっきりした縮小）。"
     },
     {
-      "id": "payems", "fred": "PAYEMS", "name": "非農業部門雇用者数（前月差）", "question": "jobs", "role": "main",
-      "freq": "M", "transform": "diff", "scale": 0.1, "unit": "万人", "decimals": 1, "direction": "up", "pub_lag_days": 36,
-      "zones": [{"lt": 0, "s": "warn"}, {"lt": 10, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0（雇用の増減の境目）"},
+      "id": "payems",
+      "fred": "PAYEMS",
+      "name": "非農業部門雇用者数（前月差）",
+      "question": "jobs",
+      "role": "main",
+      "tier": "S",
+      "freq": "M",
+      "transform": "diff",
+      "scale": 0.1,
+      "unit": "万人",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 36,
+      "zones": [
+        {
+          "lt": 0,
+          "s": "warn"
+        },
+        {
+          "lt": 10,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0（雇用の増減の境目）"
+      },
       "desc": "農業以外で働く人が前の月から何人増えたか。雇用統計の中心で、市場が最も反応する数字の一つ。",
       "read": "後から大きく修正されることがあるので、3か月平均（点線）で判断する。",
       "good": "3か月平均で＋10万人超。",
       "caution": "3か月平均がマイナス（雇用が減り始めている）。"
     },
     {
-      "id": "sahm", "fred": "SAHMREALTIME", "name": "サーム・ルール", "question": "jobs", "role": "main",
-      "freq": "M", "transform": "none", "unit": "pt", "decimals": 2, "direction": "down", "pub_lag_days": 36,
-      "zones": [{"lt": 0.3, "s": "good"}, {"lt": 0.5, "s": "caution"}, {"s": "warn"}],
-      "ref_line": {"value": 0.5, "label": "0.5（景気後退入りの目安）"},
+      "id": "sahm",
+      "fred": "SAHMREALTIME",
+      "name": "サーム・ルール",
+      "question": "jobs",
+      "role": "main",
+      "tier": "B",
+      "freq": "M",
+      "transform": "none",
+      "unit": "pt",
+      "decimals": 2,
+      "direction": "down",
+      "pub_lag_days": 36,
+      "zones": [
+        {
+          "lt": 0.3,
+          "s": "good"
+        },
+        {
+          "lt": 0.5,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
+      "ref_line": {
+        "value": 0.5,
+        "label": "0.5（景気後退入りの目安）"
+      },
       "desc": "失業率の3か月平均が、過去12か月の最低値からどれだけ上がったか。",
       "read": "0.5以上になると、過去はほぼ景気後退が始まっていた。ただし後退が始まった後に点灯する『確認』型のサイン。",
       "good": "0.3未満。",
       "caution": "0.5以上。"
     },
     {
-      "id": "unrate", "fred": "UNRATE", "name": "失業率", "question": "jobs", "role": "sub",
-      "freq": "M", "transform": "none", "unit": "%", "decimals": 1, "direction": "down", "pub_lag_days": 36,
-      "zones": [{"lt": 4.5, "s": "good"}, {"lt": 5.5, "s": "caution"}, {"s": "warn"}],
+      "id": "unrate",
+      "fred": "UNRATE",
+      "name": "失業率",
+      "question": "jobs",
+      "role": "sub",
+      "tier": "S",
+      "freq": "M",
+      "transform": "none",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "down",
+      "pub_lag_days": 36,
+      "zones": [
+        {
+          "lt": 4.5,
+          "s": "good"
+        },
+        {
+          "lt": 5.5,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
       "ref_line": null,
       "desc": "働く意思のある人のうち、仕事がない人の割合。",
       "read": "水準より『上がり始めたか』が大事。上昇の判定はサーム・ルールで行う。",
@@ -143,9 +413,32 @@
       "caution": "はっきり上昇が続く。5.5%以上。"
     },
     {
-      "id": "icsa", "fred": "ICSA", "name": "新規失業保険申請件数", "question": "jobs", "role": "sub",
-      "freq": "W", "transform": "none", "scale": 0.0001, "unit": "万件", "decimals": 1, "direction": "down", "pub_lag_days": 5,
-      "zones": [{"lt": 25, "s": "good"}, {"lt": 30, "s": "caution"}, {"s": "warn"}],
+      "id": "icsa",
+      "fred": "ICSA",
+      "name": "新規失業保険申請件数",
+      "question": "jobs",
+      "role": "sub",
+      "tier": "A",
+      "freq": "W",
+      "transform": "none",
+      "scale": 0.0001,
+      "unit": "万件",
+      "decimals": 1,
+      "direction": "down",
+      "pub_lag_days": 5,
+      "zones": [
+        {
+          "lt": 25,
+          "s": "good"
+        },
+        {
+          "lt": 30,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
       "ref_line": null,
       "desc": "1週間に新しく失業保険を申請した人数。毎週木曜発表で、雇用の変化を最も早く映す。",
       "read": "週ごとのブレが大きいので4週平均（点線）で見る。",
@@ -153,9 +446,32 @@
       "caution": "30万件以上、または4週平均がはっきり上昇。"
     },
     {
-      "id": "jolts", "fred": "JTSJOL", "name": "JOLTS求人件数", "question": "jobs", "role": "sub",
-      "freq": "M", "transform": "none", "scale": 0.1, "unit": "万件", "decimals": 0, "direction": "up", "pub_lag_days": 67,
-      "zones": [{"lt": 550, "s": "warn"}, {"lt": 650, "s": "caution"}, {"s": "good"}],
+      "id": "jolts",
+      "fred": "JTSJOL",
+      "name": "JOLTS求人件数",
+      "question": "jobs",
+      "role": "sub",
+      "tier": "A",
+      "freq": "M",
+      "transform": "none",
+      "scale": 0.1,
+      "unit": "万件",
+      "decimals": 0,
+      "direction": "up",
+      "pub_lag_days": 67,
+      "zones": [
+        {
+          "lt": 550,
+          "s": "warn"
+        },
+        {
+          "lt": 650,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
       "ref_line": null,
       "desc": "企業が出している求人の数。人手を欲しがる強さ＝労働需要。",
       "read": "求人が減っても、すぐ解雇が増えるとは限らない。失業保険申請と合わせて見る。",
@@ -163,9 +479,35 @@
       "caution": "550万件未満（コロナ前の水準を下回る）。"
     },
     {
-      "id": "ahe", "fred": "CES0500000003", "name": "平均時給（前年比）", "question": "jobs", "role": "sub",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 1, "direction": "neutral", "pub_lag_days": 36,
-      "zones": [{"lt": 2, "s": "caution"}, {"lt": 4, "s": "good"}, {"lt": 5, "s": "caution"}, {"s": "warn"}],
+      "id": "ahe",
+      "fred": "CES0500000003",
+      "name": "平均時給（前年比）",
+      "question": "jobs",
+      "role": "sub",
+      "tier": "A",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "neutral",
+      "pub_lag_days": 36,
+      "zones": [
+        {
+          "lt": 2,
+          "s": "caution"
+        },
+        {
+          "lt": 4,
+          "s": "good"
+        },
+        {
+          "lt": 5,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
       "ref_line": null,
       "desc": "民間で働く人の1時間あたりの平均賃金。雇用統計と同時に出る。",
       "read": "高すぎると物価を押し上げる（利下げが遠のく）。3〜4%がインフレ2%と両立しやすい目安。",
@@ -173,155 +515,522 @@
       "caution": "5%以上（賃金インフレ）、2%未満（弱い）。"
     },
     {
-      "id": "realwage", "fred": "LES1252881600Q", "name": "実質週給（前年比）", "question": "jobs", "role": "sub",
-      "freq": "Q", "transform": "yoy_pct", "unit": "%", "decimals": 1, "direction": "up", "pub_lag_days": 110,
-      "zones": [{"lt": -1, "s": "warn"}, {"lt": 0, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0%（物価に負けない境目）"},
+      "id": "realwage",
+      "fred": "LES1252881600Q",
+      "name": "実質週給（前年比）",
+      "question": "jobs",
+      "role": "sub",
+      "tier": "C",
+      "freq": "Q",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 110,
+      "zones": [
+        {
+          "lt": -1,
+          "s": "warn"
+        },
+        {
+          "lt": 0,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%（物価に負けない境目）"
+      },
       "desc": "フルタイム労働者の週給の中央値を物価で調整したもの。暮らし向きの実感に近い。",
       "read": "四半期ごとで更新が遅い。プラスなら賃金が物価に勝っている。",
       "good": "前年比プラス。",
       "caution": "前年比マイナス（物価に賃金が追いついていない）。"
     },
     {
-      "id": "corepce", "fred": "PCEPILFE", "name": "コアPCE物価（前年比）", "question": "inflation", "role": "main",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 2, "direction": "target", "pub_lag_days": 58,
-      "zones": [{"lt": 1.5, "s": "caution"}, {"lt": 2.5, "s": "good"}, {"lt": 3.5, "s": "caution"}, {"s": "warn"}],
-      "ref_line": {"value": 2, "label": "2%（FRBの物価目標）"},
+      "id": "corepce",
+      "fred": "PCEPILFE",
+      "name": "コアPCE物価（前年比）",
+      "question": "inflation",
+      "role": "main",
+      "tier": "S",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "target",
+      "pub_lag_days": 58,
+      "zones": [
+        {
+          "lt": 1.5,
+          "s": "caution"
+        },
+        {
+          "lt": 2.5,
+          "s": "good"
+        },
+        {
+          "lt": 3.5,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
+      "ref_line": {
+        "value": 2,
+        "label": "2%（FRBの物価目標）"
+      },
       "desc": "食品とエネルギーを除いた個人消費の物価。FRBが目標（2%）の判定に使う本命の物価指標。",
       "read": "CPIより約2週間遅れて出る。FRBの利下げ・利上げの判断に直結する。",
       "good": "2.5%以下（目標に近い）。",
       "caution": "3.5%超で上昇中（利下げが遠のく）。"
     },
     {
-      "id": "corecpi", "fred": "CPILFESL", "name": "コアCPI（前年比）", "question": "inflation", "role": "main",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 2, "direction": "target", "pub_lag_days": 43,
-      "zones": [{"lt": 1.5, "s": "caution"}, {"lt": 2.5, "s": "good"}, {"lt": 3.5, "s": "caution"}, {"s": "warn"}],
-      "ref_line": {"value": 2, "label": "2%（FRBの物価目標）"},
+      "id": "corecpi",
+      "fred": "CPILFESL",
+      "name": "コアCPI（前年比）",
+      "question": "inflation",
+      "role": "main",
+      "tier": "S",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "target",
+      "pub_lag_days": 43,
+      "zones": [
+        {
+          "lt": 1.5,
+          "s": "caution"
+        },
+        {
+          "lt": 2.5,
+          "s": "good"
+        },
+        {
+          "lt": 3.5,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
+      "ref_line": {
+        "value": 2,
+        "label": "2%（FRBの物価目標）"
+      },
       "desc": "食品とエネルギーを除いた消費者物価。毎月中旬に出て、相場が最も反応する物価指標。",
       "read": "住居費の比重が大きく、コアPCEより高めに出やすい。",
       "good": "2.5%以下。",
       "caution": "3.5%超で上昇中。"
     },
     {
-      "id": "cpi", "fred": "CPIAUCSL", "name": "CPI 総合（前年比）", "question": "inflation", "role": "sub",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 2, "direction": "target", "pub_lag_days": 43,
-      "zones": [{"lt": 1.0, "s": "caution"}, {"lt": 2.5, "s": "good"}, {"lt": 4.0, "s": "caution"}, {"s": "warn"}],
-      "ref_line": {"value": 2, "label": "2%（FRBの物価目標）"},
+      "id": "cpi",
+      "fred": "CPIAUCSL",
+      "name": "CPI 総合（前年比）",
+      "question": "inflation",
+      "role": "sub",
+      "tier": "S",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "target",
+      "pub_lag_days": 43,
+      "zones": [
+        {
+          "lt": 1.0,
+          "s": "caution"
+        },
+        {
+          "lt": 2.5,
+          "s": "good"
+        },
+        {
+          "lt": 4.0,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
+      "ref_line": {
+        "value": 2,
+        "label": "2%（FRBの物価目標）"
+      },
       "desc": "食品・エネルギーを含む消費者物価。生活実感に近い。",
       "read": "ガソリン価格で大きく振れる。基調はコアで判断する。",
       "good": "2.5%以下。",
       "caution": "4%以上。"
     },
     {
-      "id": "ppi", "fred": "PPIFIS", "name": "PPI 最終需要（前年比）", "question": "inflation", "role": "sub",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 1, "direction": "target", "pub_lag_days": 44,
-      "zones": [{"lt": 0, "s": "caution"}, {"lt": 3, "s": "good"}, {"lt": 5, "s": "caution"}, {"s": "warn"}],
-      "ref_line": {"value": 0, "label": "0%"},
+      "id": "ppi",
+      "fred": "PPIFIS",
+      "name": "PPI 最終需要（前年比）",
+      "question": "inflation",
+      "role": "sub",
+      "tier": "A",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "target",
+      "pub_lag_days": 44,
+      "zones": [
+        {
+          "lt": 0,
+          "s": "caution"
+        },
+        {
+          "lt": 3,
+          "s": "good"
+        },
+        {
+          "lt": 5,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%"
+      },
       "desc": "企業が売る段階の物価。仕入れ値の上昇はやがて消費者物価に波及する。",
       "read": "CPIの先行指標とされる。CPIの前日〜数日前に出ることが多い。",
       "good": "0〜3%。",
       "caution": "5%以上（川上からのインフレ圧力）。"
     },
     {
-      "id": "realrate", "fred": "DFII10", "name": "実質金利（10年）", "question": "financial", "role": "main",
-      "freq": "D", "transform": "none", "unit": "%", "decimals": 2, "direction": "down", "pub_lag_days": 1,
-      "zones": [{"lt": 1, "s": "good"}, {"lt": 2, "s": "caution"}, {"s": "warn"}],
-      "ref_line": {"value": 2, "label": "2%（はっきり引き締め的）"},
+      "id": "realrate",
+      "fred": "DFII10",
+      "name": "実質金利（10年）",
+      "question": "financial",
+      "role": "main",
+      "tier": "A",
+      "freq": "D",
+      "transform": "none",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "down",
+      "pub_lag_days": 1,
+      "zones": [
+        {
+          "lt": 1,
+          "s": "good"
+        },
+        {
+          "lt": 2,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
+      "ref_line": {
+        "value": 2,
+        "label": "2%（はっきり引き締め的）"
+      },
       "desc": "物価上昇分を差し引いた10年金利（物価連動債の利回り）。",
       "read": "高いほど株や金などリスク資産に逆風。特に将来の利益で評価されるグロース株に効く。",
       "good": "1%未満。",
       "caution": "2%超。"
     },
     {
-      "id": "dgs2", "fred": "DGS2", "name": "米2年債利回り", "question": "financial", "role": "main",
-      "freq": "D", "transform": "none", "unit": "%", "decimals": 2, "direction": "neutral", "pub_lag_days": 1,
-      "zones": null, "ref_line": null,
+      "id": "dgs2",
+      "fred": "DGS2",
+      "name": "米2年債利回り",
+      "question": "financial",
+      "role": "main",
+      "tier": "A",
+      "freq": "D",
+      "transform": "none",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "neutral",
+      "pub_lag_days": 1,
+      "zones": null,
+      "ref_line": null,
       "desc": "満期2年の国債利回り。市場が予想するこれから2年の政策金利を映す。",
       "read": "政策金利より下なら市場は利下げを予想、上なら利上げを予想している。3か月の変化で判定に使う。",
       "good": "3か月で0.3pt以上の低下（市場が利下げを織り込み、金融環境が緩む）。",
       "caution": "上昇が続く（引き締めの織り込み）。"
     },
     {
-      "id": "dff", "fred": "DFF", "name": "FF金利（政策金利）", "question": "financial", "role": "sub",
-      "freq": "D", "transform": "none", "unit": "%", "decimals": 2, "direction": "neutral", "pub_lag_days": 1,
-      "zones": null, "ref_line": null,
+      "id": "dff",
+      "fred": "DFF",
+      "name": "FF金利（政策金利）",
+      "question": "financial",
+      "role": "sub",
+      "tier": "S",
+      "freq": "D",
+      "transform": "none",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "neutral",
+      "pub_lag_days": 1,
+      "zones": null,
+      "ref_line": null,
       "desc": "FRBが誘導する銀行間の翌日物金利。金融政策そのもの。",
       "read": "変わるのはFOMC（年8回）の時だけ。2年債との差で『市場の予想』が分かる。",
       "good": "—（水準の良し悪しではなく方向を見る）",
       "caution": "—"
     },
     {
-      "id": "dgs10", "fred": "DGS10", "name": "米10年債利回り", "question": "financial", "role": "sub",
-      "freq": "D", "transform": "none", "unit": "%", "decimals": 2, "direction": "neutral", "pub_lag_days": 1,
-      "zones": null, "ref_line": null,
+      "id": "cutpricing",
+      "derived": {
+        "op": "sub",
+        "a": "dgs2",
+        "b": "dff"
+      },
+      "fred": "DGS2−DFF",
+      "name": "市場の利下げ織り込み（2年債−FF金利）",
+      "question": "financial",
+      "role": "sub",
+      "tier": "A",
+      "freq": "D",
+      "transform": "none",
+      "unit": "pt",
+      "decimals": 2,
+      "direction": "neutral",
+      "pub_lag_days": 1,
+      "zones": null,
+      "ref_line": {
+        "value": 0,
+        "label": "0（据え置き予想の目安）"
+      },
+      "desc": "2年債利回りから政策金利（FF金利）を引いた差。市場が今後2年の政策金利をどう予想しているかを1本で示す。",
+      "read": "マイナスが大きいほど市場は利下げを多く織り込んでいる（−0.5ptなら、ざっくり0.25%の利下げ2回分）。プラスなら利上げの織り込み。FRBの発言や指標で急に動いた時が、市場の見方が変わった瞬間。",
+      "good": "—（方向と変化の速さを見る）",
+      "caution": "短期間で大きくマイナスに沈む（景気悪化を急いで織り込んでいる可能性）、またはプラスに転じる（利上げの織り込み）。"
+    },
+    {
+      "id": "dgs10",
+      "fred": "DGS10",
+      "name": "米10年債利回り",
+      "question": "financial",
+      "role": "sub",
+      "tier": "A",
+      "freq": "D",
+      "transform": "none",
+      "unit": "%",
+      "decimals": 2,
+      "direction": "neutral",
+      "pub_lag_days": 1,
+      "zones": null,
+      "ref_line": null,
       "desc": "満期10年の国債利回り。住宅ローンや企業の借入金利の基準で、株式評価の『重力』。",
       "read": "急上昇は株価、特にグロース株の逆風になりやすい。",
       "good": "—（方向を見る）",
       "caution": "短期間での急上昇。"
     },
     {
-      "id": "dollar", "fred": "DTWEXBGS", "name": "ドル指数（貿易加重）", "question": "financial", "role": "sub",
-      "freq": "D", "transform": "none", "unit": "", "decimals": 1, "direction": "neutral", "pub_lag_days": 7,
-      "zones": null, "ref_line": null,
+      "id": "dollar",
+      "fred": "DTWEXBGS",
+      "name": "ドル指数（貿易加重）",
+      "question": "financial",
+      "role": "sub",
+      "tier": "B",
+      "freq": "D",
+      "transform": "none",
+      "unit": "",
+      "decimals": 1,
+      "direction": "neutral",
+      "pub_lag_days": 7,
+      "zones": null,
+      "ref_line": null,
       "desc": "主要な貿易相手国の通貨に対するドルの強さ（FRB算出。DXYに近い動き）。",
       "read": "ドル高は世界の資金環境を締め、海外売上の多い米企業には逆風。",
       "good": "—（方向を見る）",
       "caution": "急激なドル高。"
     },
     {
-      "id": "walcl", "fred": "WALCL", "name": "FRB総資産", "question": "financial", "role": "sub",
-      "freq": "W", "transform": "none", "scale": 0.000001, "unit": "兆ドル", "decimals": 2, "direction": "neutral", "pub_lag_days": 1,
-      "zones": null, "ref_line": null,
+      "id": "walcl",
+      "fred": "WALCL",
+      "name": "FRB総資産",
+      "question": "financial",
+      "role": "sub",
+      "tier": "B",
+      "freq": "W",
+      "transform": "none",
+      "scale": 1e-06,
+      "unit": "兆ドル",
+      "decimals": 2,
+      "direction": "neutral",
+      "pub_lag_days": 1,
+      "zones": null,
+      "ref_line": null,
       "desc": "FRBが持つ資産の合計。増える＝市場にお金を供給（量的緩和）、減る＝回収（量的引き締め）。",
       "read": "毎週木曜発表。方向（増えているか減っているか）で流動性の追い風・逆風を見る。",
       "good": "—（方向を見る）",
       "caution": "—"
     },
     {
-      "id": "t10y3m", "fred": "T10Y3M", "name": "長短金利差（10年−3か月）", "question": "recession", "role": "main",
-      "freq": "D", "transform": "none", "unit": "pt", "decimals": 2, "direction": "up", "pub_lag_days": 1,
-      "zones": [{"lt": 0, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0（これを下回ると逆イールド）"},
+      "id": "t10y3m",
+      "fred": "T10Y3M",
+      "name": "長短金利差（10年−3か月）",
+      "question": "recession",
+      "role": "main",
+      "tier": "A",
+      "freq": "D",
+      "transform": "none",
+      "unit": "pt",
+      "decimals": 2,
+      "direction": "up",
+      "pub_lag_days": 1,
+      "zones": [
+        {
+          "lt": 0,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0（これを下回ると逆イールド）"
+      },
       "desc": "10年債と3か月債の利回りの差。NY連銀の景気後退確率モデルの元になっている金利差。",
       "read": "マイナス（逆イールド）の後、プラスに戻るタイミング（解消）が景気後退の開始に近いことが多い。",
       "good": "プラスで、直近12か月に逆転がない。",
       "caution": "逆イールド中、または解消から12か月以内。"
     },
     {
-      "id": "permit", "fred": "PERMIT", "name": "住宅建築許可（前年比）", "question": "recession", "role": "main",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 1, "direction": "up", "pub_lag_days": 48,
-      "zones": [{"lt": -20, "s": "warn"}, {"lt": -10, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0%（前年並み）"},
+      "id": "permit",
+      "fred": "PERMIT",
+      "name": "住宅建築許可（前年比）",
+      "question": "recession",
+      "role": "main",
+      "tier": "B",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 48,
+      "zones": [
+        {
+          "lt": -20,
+          "s": "warn"
+        },
+        {
+          "lt": -10,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%（前年並み）"
+      },
       "desc": "新築住宅の建築許可の件数。着工より前の段階で、景気先行指数の構成要素。",
       "read": "金利に最も早く反応する分野。前年比の大きなマイナスは、過去の景気後退の前によく見られた。",
       "good": "前年比 −10%以上。",
       "caution": "前年比 −20%未満。"
     },
     {
-      "id": "t10y2y", "fred": "T10Y2Y", "name": "長短金利差（10年−2年）", "question": "recession", "role": "sub",
-      "freq": "D", "transform": "none", "unit": "pt", "decimals": 2, "direction": "up", "pub_lag_days": 1,
-      "zones": [{"lt": 0, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0（これを下回ると逆イールド）"},
+      "id": "t10y2y",
+      "fred": "T10Y2Y",
+      "name": "長短金利差（10年−2年）",
+      "question": "recession",
+      "role": "sub",
+      "tier": "A",
+      "freq": "D",
+      "transform": "none",
+      "unit": "pt",
+      "decimals": 2,
+      "direction": "up",
+      "pub_lag_days": 1,
+      "zones": [
+        {
+          "lt": 0,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0（これを下回ると逆イールド）"
+      },
       "desc": "10年債と2年債の利回りの差。最もよく報道される逆イールドの指標。",
       "read": "判定には10年−3か月差を使い、こちらは確認用。",
       "good": "プラス。",
       "caution": "マイナス（逆イールド）。"
     },
     {
-      "id": "houst", "fred": "HOUST", "name": "住宅着工件数（前年比）", "question": "recession", "role": "sub",
-      "freq": "M", "transform": "yoy_pct", "unit": "%", "decimals": 1, "direction": "up", "pub_lag_days": 48,
-      "zones": [{"lt": -20, "s": "warn"}, {"lt": -10, "s": "caution"}, {"s": "good"}],
-      "ref_line": {"value": 0, "label": "0%（前年並み）"},
+      "id": "houst",
+      "fred": "HOUST",
+      "name": "住宅着工件数（前年比）",
+      "question": "recession",
+      "role": "sub",
+      "tier": "B",
+      "freq": "M",
+      "transform": "yoy_pct",
+      "unit": "%",
+      "decimals": 1,
+      "direction": "up",
+      "pub_lag_days": 48,
+      "zones": [
+        {
+          "lt": -20,
+          "s": "warn"
+        },
+        {
+          "lt": -10,
+          "s": "caution"
+        },
+        {
+          "s": "good"
+        }
+      ],
+      "ref_line": {
+        "value": 0,
+        "label": "0%（前年並み）"
+      },
       "desc": "新築住宅の工事が始まった件数。",
       "read": "建築許可の後を追う。月ごとのブレが大きい。",
       "good": "前年比 −10%以上。",
       "caution": "前年比 −20%未満。"
     },
     {
-      "id": "vix", "fred": "VIXCLS", "name": "VIX（恐怖指数）", "question": "reference", "role": "ref",
-      "freq": "D", "transform": "none", "unit": "", "decimals": 1, "direction": "down", "pub_lag_days": 1,
-      "zones": [{"lt": 20, "s": "good"}, {"lt": 30, "s": "caution"}, {"s": "warn"}],
-      "ref_line": {"value": 20, "label": "20（平常時の目安）"},
+      "id": "vix",
+      "fred": "VIXCLS",
+      "name": "VIX（恐怖指数）",
+      "question": "reference",
+      "role": "ref",
+      "tier": "B",
+      "freq": "D",
+      "transform": "none",
+      "unit": "",
+      "decimals": 1,
+      "direction": "down",
+      "pub_lag_days": 1,
+      "zones": [
+        {
+          "lt": 20,
+          "s": "good"
+        },
+        {
+          "lt": 30,
+          "s": "caution"
+        },
+        {
+          "s": "warn"
+        }
+      ],
+      "ref_line": {
+        "value": 20,
+        "label": "20（平常時の目安）"
+      },
       "desc": "S&P500のオプション価格から計算する、今後30日の予想変動率。市場の不安の大きさ。",
       "read": "判定には使わない参考指標（日々の相場確認は別ツールで実施）。",
       "good": "20未満。",
@@ -329,23 +1038,54 @@
       "citation": "CBOE Volatility Index: VIX, Chicago Board Options Exchange, retrieved from FRED"
     },
     {
-      "id": "tradebal", "fred": "BOPGSTB", "name": "貿易収支", "question": "reference", "role": "ref",
-      "freq": "M", "transform": "none", "scale": 0.001, "unit": "十億ドル", "decimals": 1, "direction": "neutral", "pub_lag_days": 65,
-      "zones": null, "ref_line": null,
+      "id": "tradebal",
+      "fred": "BOPGSTB",
+      "name": "貿易収支",
+      "question": "reference",
+      "role": "ref",
+      "tier": "C",
+      "freq": "M",
+      "transform": "none",
+      "scale": 0.001,
+      "unit": "十億ドル",
+      "decimals": 1,
+      "direction": "neutral",
+      "pub_lag_days": 65,
+      "zones": null,
+      "ref_line": null,
       "desc": "モノとサービスの輸出から輸入を引いた額。",
       "read": "米国は数十年ずっと赤字なので、0との比較では判断できない。過去10年の中での位置（パーセンタイル）で見る。",
-      "good": "—", "caution": "—"
+      "good": "—",
+      "caution": "—"
     },
     {
-      "id": "curacct", "fred": "IEABC", "name": "経常収支", "question": "reference", "role": "ref",
-      "freq": "Q", "transform": "none", "scale": 0.001, "unit": "十億ドル", "decimals": 1, "direction": "neutral", "pub_lag_days": 175,
-      "zones": null, "ref_line": null,
+      "id": "curacct",
+      "fred": "IEABC",
+      "name": "経常収支",
+      "question": "reference",
+      "role": "ref",
+      "tier": "C",
+      "freq": "Q",
+      "transform": "none",
+      "scale": 0.001,
+      "unit": "十億ドル",
+      "decimals": 1,
+      "direction": "neutral",
+      "pub_lag_days": 175,
+      "zones": null,
+      "ref_line": null,
       "desc": "貿易収支に、海外との利子・配当などのやり取りを加えた国全体の対外収支。",
       "read": "四半期ごとで遅い。貿易収支と同じく、過去10年の中での位置で見る。",
-      "good": "—", "caution": "—"
+      "good": "—",
+      "caution": "—"
     }
   ],
   "hidden_series": [
-    {"id": "usrec", "fred": "USREC", "freq": "M", "note": "NBER景気後退期（チャートの網掛けと過去検証に使用）"}
+    {
+      "id": "usrec",
+      "fred": "USREC",
+      "freq": "M",
+      "note": "NBER景気後退期（チャートの網掛けと過去検証に使用）"
+    }
   ]
 }

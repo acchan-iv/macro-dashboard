@@ -52,6 +52,12 @@ function changeClass(ind, from, to) {
 }
 // 前月比・前月差の指標は『1年前の前月比との差』に意味がないので出さない
 function showYear(i) { return !['mom_pct', 'diff'].includes(i.transform); }
+const TIER_ORDER = { S: 0, A: 1, B: 2, C: 3 };
+function tierChip(t) {
+  if (!t) return '';
+  const label = (IND.settings.tier_labels || {})[t] || t;
+  return `<span class="tier t-${t}" title="重要度：${esc(label)}">${esc(label)}</span>`;
+}
 function arrow(v) { return v > 0 ? '▲' : v < 0 ? '▼' : '→'; }
 
 // ---------- 読み込み ----------
@@ -108,7 +114,7 @@ function renderNotable() {
 function renderCalendar() {
   const u = SUM.upcoming || [];
   $('calendar').innerHTML = u.length
-    ? `<ul class="list">${u.map((x) => `<li><span class="d">${mdw(x.date)}</span>${x.names.map(esc).join('・')}</li>`).join('')}</ul>
+    ? `<ul class="list">${u.map((x) => `<li><span class="d">${mdw(x.date)}</span>${(x.items || (x.names || []).map((n) => ({ name: n }))).map((it) => `<span class="calitem">${tierChip(it.tier)}${esc(it.name)}</span>`).join('')}</li>`).join('')}</ul>
        <p class="note">日次の金利・ドル・VIXは毎営業日更新のため省いています。日付は米国時間（日本では翌日の夜〜未明）。</p>`
     : '<p class="empty">予定を取得できませんでした。</p>';
 }
@@ -129,11 +135,12 @@ function renderGroups() {
     else if (filter !== 'all' && filter !== q.id) list = [];
     if (search) list = list.filter((i) => i.name.includes(search));
     if (!list.length) return '';
-    list.sort((a, b) => (a.role === 'main' ? 0 : 1) - (b.role === 'main' ? 0 : 1));
+    list.sort((a, b) => ((a.role === 'main' ? 0 : 1) - (b.role === 'main' ? 0 : 1)) || ((TIER_ORDER[a.tier] ?? 9) - (TIER_ORDER[b.tier] ?? 9)));
     return `<div class="group"><h3>${esc(q.name)} <small>${esc(q.question)}</small>${stateOf[q.id] ? badge(stateOf[q.id], true) : ''}</h3>
       <div class="grid">${list.map(card).join('')}</div></div>`;
   }).join('');
-  $('groups').innerHTML = html || '<p class="empty">該当する指標がありません。</p>';
+  const legend = `<p class="note">${['S', 'A', 'B', 'C'].map(tierChip).join(' ')}　${esc(IND.settings.tier_rule || '')}　「主役」は5つの判定に使う指標、「補助」「参考」は確認用。</p>`;
+  $('groups').innerHTML = html ? legend + html : '<p class="empty">該当する指標がありません。</p>';
   document.querySelectorAll('.card').forEach((el) => {
     el.addEventListener('click', (e) => { if (e.target.closest('.fav')) return; openModal(el.dataset.id); });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(el.dataset.id); } });
@@ -154,7 +161,7 @@ function card(i) {
   return `<div class="card ${i.role === 'main' ? 'main' : ''}" role="button" tabindex="0" data-id="${i.id}" aria-label="${esc(i.name)}の詳細を開く">
     <div class="ctop"><span><span class="role ${i.role === 'main' ? 'main' : ''}">${roleTxt}</span> ${i.zone ? badge(i.zone, true) : ''}</span>
       <button class="fav ${favs.has(i.id) ? 'on' : ''}" data-id="${i.id}" aria-label="お気に入り">${favs.has(i.id) ? '★' : '☆'}</button></div>
-    <p class="cname">${esc(i.name)}</p>
+    <p class="cname">${tierChip(i.tier)}${esc(i.name)}</p>
     <div class="cval">${fmt(i.latest, i.decimals)}<small>${esc(i.unit)}</small>${i.big_move ? '<span class="big">大きな変化</span>' : ''}</div>
     <div class="cdate">${dateLabel(i.latest_date, i.freq)}${stale}${lag}${next}</div>
     ${spark(i)}
@@ -201,7 +208,7 @@ async function openModal(id) {
   const cu = chgUnit(i);
   const others = IND.indicators.filter((x) => x.id !== id && x.ok);
   $('m-body').innerHTML = `
-    <h2 id="m-title" style="border:0;margin:0 44px 0 0">${esc(i.name)}</h2>
+    <h2 id="m-title" style="border:0;margin:0 44px 0 0">${tierChip(i.tier)}${esc(i.name)}</h2>
     <div style="margin-top:4px">${i.role === 'main' ? '<span class="role main">主役</span>' : ''} ${i.zone ? badge(i.zone, true) : ''} <span class="note">分類：${esc(QNAMES[i.question] || '')}／${esc(TRANSFORM_LABEL[i.transform])}</span></div>
     <p class="m-desc">${esc(i.desc)}</p>
     <div class="stats">
@@ -223,7 +230,7 @@ async function openModal(id) {
     <div class="readbox"><b>見方：</b>${esc(i.read)}</div>
     <div class="guide"><div class="g"><h4>良いとされる状態</h4>${esc(i.good)}</div><div class="c"><h4>注意が必要な状態</h4>${esc(i.caution)}</div></div>
     <div class="m-foot">
-      出典：<a href="https://fred.stlouisfed.org/series/${esc(i.fred)}" target="_blank" rel="noopener">FRED ${esc(i.fred)}</a>${i.citation ? `／${esc(i.citation)}` : ''}<br>
+      出典：${sourceLinks(i)}${i.citation ? `／${esc(i.citation)}` : ''}<br>
       変化の大きさ（z値）は市場予想との比較ではなく、この指標の過去20年の変化幅と比べた珍しさ（±${IND.settings.big_move_z}以上で「大きな変化」）。<br>
       <button class="btn" id="m-csv">CSVをダウンロード</button>
     </div>`;
@@ -336,13 +343,22 @@ async function drawCharts() {
   }
 }
 
+function sourceLinks(i) {
+  const link = (id) => `<a href="https://fred.stlouisfed.org/series/${esc(id)}" target="_blank" rel="noopener">FRED ${esc(id)}</a>`;
+  if (i.derived) {
+    const byId = (x) => (IND.indicators.find((o) => o.id === x) || {}).fred;
+    return `${link(byId(i.derived.a))} − ${link(byId(i.derived.b))}（このツールで計算）`;
+  }
+  return link(i.fred);
+}
+
 async function downloadCsv(i) {
   const s = await getSeries(i.id);
   const rows = ['date,raw,' + (TRANSFORM_LABEL[i.transform] || 'value')];
   s.dates.forEach((d, k) => rows.push(`${d},${s.raw[k] ?? ''},${s.v[k] ?? ''}`));
   const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `${i.fred}.csv`; a.click();
+  a.href = URL.createObjectURL(blob); a.download = `${i.derived ? i.id : i.fred}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 

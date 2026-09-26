@@ -37,6 +37,7 @@ PERIODS_PER_YEAR = {"M": 12, "Q": 4, "W": 52}
 MA_WINDOW = {"M": 3, "W": 4}
 TREND_WINDOW = {"Q": 2, "M": 3, "W": 4, "D": 21}
 CHANGE_LAG = {"Q": 1, "M": 1, "W": 1, "D": 5}
+TIER_ORDER = {"S": 0, "A": 1, "B": 2, "C": 3}
 STATE_LABEL = {"good": "良好", "caution": "注意", "warn": "警戒", "na": "データ不足"}
 
 
@@ -140,6 +141,17 @@ def transform(raw: pd.Series, ind: dict) -> pd.Series:
     else:
         raise ValueError(f"unknown transform {t}")
     return out.replace([math.inf, -math.inf], math.nan)
+
+
+def derive(spec: dict, raws: dict) -> pd.Series:
+    """2つの系列から作る指標（例：2年債−FF金利）。両方に値がある日だけ計算する"""
+    a, b = raws.get(spec["a"]), raws.get(spec["b"])
+    if a is None or b is None:
+        raise RuntimeError(f"元データ不足: {spec['a']} / {spec['b']}")
+    if spec["op"] != "sub":
+        raise ValueError(f"unknown op {spec['op']}")
+    df = pd.concat([a.rename("a"), b.rename("b")], axis=1, join="inner").dropna()
+    return df["a"] - df["b"]
 
 
 def zone_state(value: float | None, zones: list | None) -> str | None:
@@ -534,6 +546,7 @@ def main() -> int:
     series_dir.mkdir(parents=True, exist_ok=True)
 
     tseries: dict[str, pd.Series] = {}
+    raws: dict[str, pd.Series] = {}
     lags: dict[str, int] = {}
     ind_out = []
     failed, fallback_used = [], []
@@ -542,7 +555,10 @@ def main() -> int:
         iid = ind["id"]
         source = "fred"
         try:
-            raw = fred.observations(ind["fred"], settings["fetch_start"])
+            if ind.get("derived"):
+                raw = derive(ind["derived"], raws)
+            else:
+                raw = fred.observations(ind["fred"], settings["fetch_start"])
             if len(raw) == 0:
                 raise RuntimeError("データが空")
         except Exception as e:  # noqa: BLE001
@@ -555,6 +571,7 @@ def main() -> int:
             fallback_used.append(ind["name"])
             print(f"[代替] {iid}: 前回データを使用", file=sys.stderr)
 
+        raws[iid] = raw
         v = transform(raw, ind)
         tseries[iid] = v
         lags[iid] = ind.get("pub_lag_days", 1)
@@ -570,11 +587,11 @@ def main() -> int:
 
         m = indicator_metrics(ind, raw, v, settings, today)
         m["source"] = source
-        nxt = [] if ind["freq"] == "D" else fred.next_release_dates(ind["fred"], today)
+        nxt = [] if ind["freq"] == "D" or ind.get("derived") else fred.next_release_dates(ind["fred"], today)
         m["next_release"] = nxt[0] if nxt else None
         m["upcoming"] = nxt[:3]
         meta = {k: ind.get(k) for k in (
-            "id", "fred", "name", "question", "role", "freq", "transform", "unit", "decimals",
+            "id", "fred", "derived", "name", "question", "role", "tier", "freq", "transform", "unit", "decimals",
             "direction", "zones", "ref_line", "desc", "read", "good", "caution", "citation")}
         ind_out.append({**meta, **m})
 
@@ -611,13 +628,15 @@ def main() -> int:
              for i in ind_out if i.get("ok") and i["fresh"]["stale"]]
 
     # 発表予定（今日から21日）
-    cal: dict[str, list[str]] = {}
+    cal: dict[str, dict[str, str]] = {}
     horizon = (today + dt.timedelta(days=21)).isoformat()
     for i in ind_out:
         for d in i.get("upcoming", []):
             if today.isoformat() <= d <= horizon:
-                cal.setdefault(d, []).append(i["name"])
-    upcoming = [{"date": d, "names": sorted(set(n))} for d, n in sorted(cal.items())]
+                cal.setdefault(d, {})[i["name"]] = i.get("tier", "C")
+    upcoming = [{"date": d, "items": [{"name": n, "tier": t} for n, t in sorted(x.items(), key=lambda kv: (TIER_ORDER.get(kv[1], 9), kv[0]))]}
+                for d, x in sorted(cal.items())]
+    tier_label = settings.get("tier_labels", {})
 
     mark = {"good": "良好", "caution": "注意", "warn": "警戒", "na": "データ不足"}
     lines = [f"【米国マクロ指標トラッカー {today.isoformat()}】"]
@@ -630,7 +649,9 @@ def main() -> int:
     if stale:
         lines.append("・更新が遅れている指標：" + "、".join(s["name"] for s in stale))
     if upcoming:
-        lines.append("・次の発表：" + "／".join(f"{u['date'][5:]} {'・'.join(u['names'])}" for u in upcoming[:4]))
+        def _cal(u):
+            return "・".join(f"{x['name']}【{tier_label.get(x['tier'], '')}】" if x["tier"] in ("S", "A") else x["name"] for x in u["items"])
+        lines.append("・次の発表：" + "／".join(f"{u['date'][5:]} {_cal(u)}" for u in upcoming[:4]))
 
     generated = now_jst.strftime("%Y-%m-%d %H:%M")
     common = {"generated_at_jst": generated, "today": today.isoformat(), "test_mode": bool(args.offline)}
@@ -646,7 +667,7 @@ def main() -> int:
     write_json(OUT_DIR / "summary.json", summary)
     write_json(OUT_DIR / "indicators.json", {
         **common,
-        "settings": {k: settings[k] for k in ("show_cycle", "site_title", "big_move_z")},
+        "settings": {k: settings.get(k) for k in ("show_cycle", "site_title", "big_move_z", "tier_labels", "tier_rule")},
         "questions": [{k: q[k] for k in ("id", "name", "question", "main", "rule_text")} for q in cfg["questions"]],
         "indicators": ind_out,
         "recessions": recession_periods(usrec) if len(usrec) else [],

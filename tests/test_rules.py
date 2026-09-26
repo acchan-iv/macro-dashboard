@@ -60,4 +60,11 @@ for q, exp in expected.items():
 prev = run("2026-08-31")["recession"]
 print(("OK " if prev["state"] == "warn" else "NG ") + f"recession(2026-08末) 期待=warn 結果={prev['state']} {prev['reasons']}")
 ok &= prev["state"] == "warn"
+# 2つの系列の差（2年債−FF金利）：両方に値がある日だけ計算されるか
+a = s([("2026-09-23", 4.85), ("2026-09-24", 4.87)])
+f_ = s([("2026-09-22", 4.33), ("2026-09-23", 4.33), ("2026-09-24", 4.33)])
+d = b.derive({"op": "sub", "a": "dgs2", "b": "dff"}, {"dgs2": a, "dff": f_})
+good = list(d.index.strftime("%Y-%m-%d")) == ["2026-09-23", "2026-09-24"] and abs(d.iloc[-1] - 0.54) < 1e-9
+print(("OK " if good else "NG ") + f"derive 2年債−FF金利 → {[round(x, 2) for x in d.values]}")
+ok &= good
 sys.exit(0 if ok else 1)

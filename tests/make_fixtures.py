@@ -86,6 +86,8 @@ releases = {}
 for ind in cfg["indicators"]:
     sid, freq = ind["fred"], ind["freq"]
     idx = dates(freq)
+    if ind.get("derived"):
+        continue
     if sid in ("DFII10",):
         idx = idx[idx >= "2003-01-02"]
     vals = SPEC[sid](idx)
