@@ -177,3 +177,14 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
   .rval small { margin-left: 6px; }
 }
 .chg { row-gap: 2px; }
+
+/* 表示範囲の切り替え */
+.range { display: inline-flex; align-items: center; gap: 0; border: 2px solid var(--text); border-radius: 8px; overflow: hidden; }
+.range-label { font-size: 13px; font-weight: 700; padding: 4px 10px; border-right: 2px solid var(--text); }
+.rbtn { font: inherit; font-size: 14px; border: 0; border-right: 1px solid var(--line-strong); background: #fff; color: var(--text); padding: 5px 12px; cursor: pointer; }
+.rbtn:last-child { border-right: 0; }
+.rbtn[aria-checked="true"] { background: var(--text); color: #fff; font-weight: 700; }
+.explain { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; margin: 6px 0 10px; }
+.explain summary { cursor: pointer; font-weight: 700; }
+.explain table.t td { text-align: left; vertical-align: top; }
+.explain ul { margin: 8px 0 4px; padding-left: 20px; }

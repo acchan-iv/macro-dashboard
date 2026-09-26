@@ -48,6 +48,14 @@
   <section>
     <h2>指標一覧</h2>
     <div class="filters">
+      <div class="range" role="radiogroup" aria-label="表示する重要度の範囲">
+        <span class="range-label">表示範囲</span>
+        <button class="rbtn" data-range="S" role="radio">超重要のみ</button>
+        <button class="rbtn" data-range="A" role="radio">重要以上</button>
+        <button class="rbtn" data-range="all" role="radio">すべて</button>
+      </div>
+    </div>
+    <div class="filters">
       <div id="chips" class="chips" role="tablist"></div>
       <input id="search" type="search" placeholder="指標名で絞り込み" aria-label="指標名で絞り込み">
     </div>

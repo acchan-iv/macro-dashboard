@@ -14,6 +14,9 @@ const C = { blue: '#2a78d6', orange: '#d9571f', ma: '#5b6168', grid: '#e6e8eb', 
 let IND = null, SUM = null, HIST = null;
 const seriesCache = {};
 let filter = 'all', search = '';
+let range = 'A'; // 表示範囲の初期値＝重要以上（毎回この状態で始まる）
+const RANGE_MAX = { S: 0, A: 1, all: 9 };
+const inRange = (i) => (TIER_ORDER[i.tier] ?? 9) <= RANGE_MAX[range];
 let favs = loadFavs();
 
 // ---------- ユーティリティ ----------
@@ -151,19 +154,38 @@ function renderChips() {
 
 function renderGroups() {
   const qs = [...IND.questions.map((q) => ({ id: q.id, name: q.name, question: q.question })), { id: 'reference', name: '参考', question: '判定には使わない指標' }];
+  let hidden = 0;
+  document.querySelectorAll('.rbtn').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.range === range)));
   const stateOf = Object.fromEntries(SUM.questions.map((q) => [q.id, q.state]));
   const html = qs.map((q) => {
     let list = IND.indicators.filter((i) => i.question === q.id);
     if (filter === 'fav') list = list.filter((i) => favs.has(i.id));
     else if (filter !== 'all' && filter !== q.id) list = [];
     if (search) list = list.filter((i) => i.name.includes(search));
+    if (filter !== 'fav') { // お気に入りは自分で選んだものなので、範囲に関係なく表示
+      hidden += list.filter((i) => !inRange(i)).length;
+      list = list.filter(inRange);
+    }
     if (!list.length) return '';
     list.sort((a, b) => ((a.role === 'main' ? 0 : 1) - (b.role === 'main' ? 0 : 1)) || ((TIER_ORDER[a.tier] ?? 9) - (TIER_ORDER[b.tier] ?? 9)));
     return `<div class="group"><h3>${esc(q.name)} <small>${esc(q.question)}</small>${stateOf[q.id] ? badge(stateOf[q.id], true) : ''}</h3>
       <div class="grid">${list.map(card).join('')}</div></div>`;
   }).join('');
-  const legend = `<p class="note">${['S', 'A', 'B', 'C'].map(tierChip).join(' ')}　${esc(IND.settings.tier_rule || '')}　「主役」は5つの判定に使う指標、「補助」「参考」は確認用。</p>`;
-  $('groups').innerHTML = html ? legend + html : '<p class="empty">該当する指標がありません。</p>';
+  const hiddenNote = hidden ? `<p class="note">この表示範囲で隠れている指標：<b>${hidden}本</b>（「すべて」を選ぶと表示）</p>` : '';
+  const legend = `<p class="note">${['S', 'A', 'B', 'C'].map(tierChip).join(' ')}　重要度＝発表時に相場が動く大きさ。「主役」は5つの判定に使う指標。</p>
+    <details class="explain"><summary>「主役・補助」と「重要度」の関係（解説）</summary>
+      <p><b>2つは物差しが違います。</b>「主役・補助・参考」は<b>このツールの判定に使うかどうか</b>、「重要度」は<b>発表の瞬間に相場がどれだけ反応するか</b>を表します。</p>
+      <table class="t"><tr><th></th><th>重要度が高い（相場が反応する）</th><th>重要度が低い（相場はあまり反応しない）</th></tr>
+        <tr><td><b>主役</b></td><td>コアPCE・コアCPI・雇用者数<br>判定にも使い、相場も動く</td><td>鉱工業生産・建築許可・サーム・ルール<br>発表日は静かだが、景気の流れや後退の予兆をつかむのに優れる</td></tr>
+        <tr><td><b>補助</b></td><td>失業率・CPI総合・FF金利<br>相場は大きく動くが、判定には別の指標が向いている</td><td>実質週給など<br>確認用</td></tr></table>
+      <ul>
+        <li><b>主役の選び方：</b>毎月確実に出る／後から大きく修正されにくい／過去30年以上のデータで景気後退前に当たったかを検証できる。</li>
+        <li><b>超重要なのに補助の例：</b>失業率は、上がり方を計算したサーム・ルールのほうが景気後退の判定に的確。CPI総合はガソリンで振れるのでコアCPIを使う。FF金利はFOMCの時しか変わらないので、市場の予想を先に映す2年債を使う。</li>
+        <li><b>使い分け：</b>「昨夜何があったか」は重要度で見る（今日の相場の物差し）。「景気の流れ・局面」は主役と5つの判定で見る（流れの物差し）。</li>
+        <li><b>重要度は固定ではない：</b>インフレが問題の時期はCPI、景気減速が心配な時期は雇用統計で相場が大きく動く。</li>
+      </ul>
+    </details>`;
+  $('groups').innerHTML = html ? legend + hiddenNote + html : hiddenNote + '<p class="empty">該当する指標がありません。</p>';
   document.querySelectorAll('.card').forEach((el) => {
     el.addEventListener('click', (e) => { if (e.target.closest('.fav')) return; openModal(el.dataset.id); });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(el.dataset.id); } });
@@ -447,6 +469,8 @@ function renderHistory() {
     <div class="tscroll"><table class="t">${head}${body}${prec}</table></div>
     <p class="note">「〇か月前から警戒」＝景気後退が始まる前の24か月以内で、最初に警戒が出た時期。当たり率＝警戒が出た月のうち、24か月以内に景気後退が始まった割合（直近24か月は結果が未確定のため除外）。インフレと金融環境は景気後退を当てるための問いではないので、当たり率は参考です。</p>`;
 }
+
+document.querySelectorAll('.rbtn').forEach((b) => b.addEventListener('click', () => { range = b.dataset.range; renderGroups(); }));
 
 // ---------- AIに渡す ----------
 async function copyText(text) {
