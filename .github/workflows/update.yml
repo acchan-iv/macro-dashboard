@@ -2,11 +2,15 @@ name: 毎日データ更新
 
 on:
   schedule:
-    - cron: "47 16 * * *"   # 毎日 16:47 UTC ＝ 日本時間 1:47（前夜の米国発表分を取り込める最も早い時刻。冬時間の10時発表分も約45分後に反映済み）
+    # UTC 月〜金 16:47 ＝ 日本時間 火〜土 1:47（米国の月〜金の発表分）
+    # 前夜の米国発表分を取り込める最も早い時刻。最も遅いミシガン大学指数（冬時間で1:02ごろFRED掲載）から約45分後
+    - cron: "47 16 * * 1-5"
+  push:                      # 修正をmainに反映したら、その場でページを作り直す
+    branches: [main]
   workflow_dispatch:         # 手動実行ボタン
 
 permissions:
-  contents: write            # 月1回の keepalive コミット用
+  contents: write            # 30日ごとの keepalive コミット用
   pages: write
   id-token: write
 
@@ -39,11 +43,12 @@ jobs:
         with:
           path: docs
 
-      # GitHubは60日間コミットのないリポジトリの定期実行を自動停止するため、毎月1日に空コミットする
+      # GitHubは60日間更新のないリポジトリの定期実行を自動停止するため、最後の更新から30日たったら空コミットする
       - name: keepalive
         if: github.event_name == 'schedule'
         run: |
-          if [ "$(TZ=Asia/Tokyo date +%d)" = "01" ]; then
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt 2592000 ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit --allow-empty -m "keepalive $(TZ=Asia/Tokyo date +%F)"
