@@ -425,6 +425,31 @@ function renderHistory() {
     <p class="note">「〇か月前から警戒」＝景気後退が始まる前の24か月以内で、最初に警戒が出た時期。当たり率＝警戒が出た月のうち、24か月以内に景気後退が始まった割合（直近24か月は結果が未確定のため除外）。インフレと金融環境は景気後退を当てるための問いではないので、当たり率は参考です。</p>`;
 }
 
+// ---------- AIに渡す ----------
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* 下の方法で再試行 */ }
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+document.querySelectorAll('[data-ai]').forEach((b) => b.addEventListener('click', async () => {
+  const msg = $('aimsg');
+  msg.textContent = '準備中…';
+  try {
+    const r = await fetch('data/' + b.dataset.ai, { cache: 'no-cache' });
+    if (!r.ok) throw new Error(r.status);
+    const text = await r.text();
+    const ok = await copyText(text);
+    msg.textContent = ok ? `コピーしました（${text.length.toLocaleString()}文字）。AIのチャットに貼り付けてください。` : 'コピーできませんでした。右のリンクからファイルを保存してください。';
+  } catch (e) {
+    msg.textContent = '読み込めませんでした（' + e.message + '）。';
+  }
+}));
+
 // ---------- イベント ----------
 $('m-close').addEventListener('click', closeModal);
 $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });

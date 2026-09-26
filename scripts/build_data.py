@@ -518,6 +518,150 @@ def recession_periods(usrec: pd.Series) -> list:
 
 
 # ----------------------------------------------------------------------------
+# AIに渡すためのテキスト（要約版・時系列つき）
+# ----------------------------------------------------------------------------
+FREQ_JA = {"D": "日次", "W": "週次", "M": "月次", "Q": "四半期"}
+TRANSFORM_JA = {"none": "水準", "yoy_pct": "前年同期比", "mom_pct": "前月比", "diff": "前月差"}
+ZONE_JA = {"good": "良好", "caution": "注意", "warn": "警戒", None: "—"}
+
+
+def _n(x, d):
+    if x is None or (isinstance(x, float) and math.isnan(x)):
+        return "—"
+    return f"{x:,.{d}f}"
+
+
+def _s(x, d):
+    if x is None or (isinstance(x, float) and math.isnan(x)):
+        return "—"
+    return f"{x:+,.{d}f}"
+
+
+def build_ai_text(generated, today, settings, qcfg, q_out, ind_out, tseries, notable, stale, upcoming,
+                  failed, fallback_used, history, cycle_now, with_series: bool) -> str:
+    tl = settings.get("tier_labels", {})
+    qname = {q["id"]: q["name"] for q in qcfg}
+    qname["reference"] = "参考"
+    L = []
+    L.append(f"# 米国マクロ指標トラッカー 分析データ（{generated} 日本時間 更新／基準日 {today}）")
+    L.append("")
+    L.append("## このデータの扱い方（AIへの指示）")
+    L.append("- 出典はFRED（セントルイス連邦準備銀行）。数値はすべてツールがFREDから取得・計算した値で、推測で補っていない。")
+    L.append("- 5つの問いの判定は、下記ルールによる機械的な集計であり、投資助言ではない。")
+    L.append("- 各数値には「データの日付」がある。月次・四半期の指標は発表が1〜4か月遅れるため、日付を必ず確認して解釈すること。")
+    L.append(f"- 「10年位置」は過去10年の中で下から何%の水準か。「z」は直近の変化幅が過去20年の変化の中でどれだけ珍しいか（±{settings.get('big_move_z', 2.0):.1f}以上で大きな変化）。")
+    L.append("- " + settings.get("tier_rule", ""))
+    L.append("")
+
+    L.append("## 1. 5つの問いの判定")
+    L.append("| 問い | 判定 | 根拠（最新値） | 理由 |")
+    L.append("|---|---|---|---|")
+    for q in q_out:
+        L.append(f"| {q['question']} | {q['label']} | {q['reasons'][0] if q['reasons'] else ''} | {q['reasons'][1] if len(q['reasons']) > 1 else ''} |")
+    L.append("")
+    L.append("判定ルール：")
+    iname = {i["id"]: i["name"] for i in ind_out}
+    for q in qcfg:
+        L.append(f"- {q['name']}（主役：{'・'.join(iname.get(m, m) for m in q['main'])}）：{q['rule_text']}")
+    if settings.get("show_cycle") and cycle_now:
+        L.append(f"- 景気サイクル（参考）：{cycle_now}")
+    L.append("")
+
+    L.append(f"## 2. 指標一覧（{len(ind_out)}本）")
+    L.append("| 分類 | 重要度 | 役割 | 指標 | 最新値 | データ日付 | 前回から | 1年前から | 10年位置 | 状態 | 向き | z | 次回発表 |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    role_ja = {"main": "主役", "sub": "補助", "ref": "参考"}
+    for i in ind_out:
+        if not i.get("ok"):
+            L.append(f"| {qname.get(i['question'], '')} | {tl.get(i.get('tier'), '')} | {role_ja.get(i['role'], '')} | {i['name']} | 取得失敗 | | | | | | | | |")
+            continue
+        d, u = i["decimals"], i["unit"]
+        cu = "pt" if u == "%" else u
+        yoy = "—" if i["transform"] in ("mom_pct", "diff") else f"{_s(i['yoy_change'], d)}{cu}"
+        stale_mark = "（更新遅れ）" if i["fresh"]["stale"] else ""
+        L.append(
+            f"| {qname.get(i['question'], '')} | {tl.get(i.get('tier'), '')} | {role_ja.get(i['role'], '')} | {i['name']} "
+            f"| {_n(i['latest'], d)}{u} | {i['latest_date']}{stale_mark} | {_s(i['change'], d)}{cu} | {yoy} "
+            f"| {'—' if i['percentile_10y'] is None else str(int(i['percentile_10y'])) + '%'} | {ZONE_JA.get(i.get('zone'))} "
+            f"| {i['trend']['text']} | {_s(i['z'], 1)} | {i.get('next_release') or ('毎営業日' if i['freq'] == 'D' else '—')} |")
+    L.append("")
+    L.append("指標の定義：")
+    for i in ind_out:
+        src = f"FRED {i['fred']}" if not i.get("derived") else f"FRED {i['fred']}（ツールで計算）"
+        L.append(f"- {i['name']}：{src}／{FREQ_JA[i['freq']]}／{TRANSFORM_JA[i['transform']]}（{i['unit'] or '指数'}）。{i['desc']} 見方：{i['read']}")
+    L.append("")
+
+    L.append("## 3. 気になる動き")
+    if not (notable or stale or failed or fallback_used):
+        L.append("- 特になし")
+    for n in notable:
+        L.append(f"- 大きな変化：{n['name']}（直近の変化 {_s(n['change'], 2)}、z={_s(n['z'], 1)}、{n['latest_date']}）")
+    for x in stale:
+        L.append(f"- 更新遅れ：{x['name']}（最新データ {x['latest_date']}、{x['age_days']}日前）")
+    for x in failed:
+        L.append(f"- 取得失敗：{x['name']}")
+    if fallback_used:
+        L.append("- 前回データで代替：" + "、".join(fallback_used))
+    L.append("")
+
+    L.append("## 4. 発表予定（今後3週間・米国日付）")
+    if not upcoming:
+        L.append("- 取得できず")
+    for u in upcoming:
+        L.append(f"- {u['date']}：" + "、".join(f"{x['name']}【{tl.get(x['tier'], '')}】" for x in u["items"]))
+    L.append("")
+
+    L.append("## 5. 過去の判定（ルールの検証）")
+    L.append(history.get("note", ""))
+    qs = [q["id"] for q in qcfg]
+    L.append("")
+    L.append("| 景気後退の開始 | " + " | ".join(qname[q] for q in qs) + " |")
+    L.append("|---|" + "---|" * len(qs))
+    for l in history["leads"]:
+        cells = []
+        for q in qs:
+            x = l["q"][q]
+            cells.append("警戒なし" if x["months_before"] is None else ("開始月に警戒" if x["months_before"] == 0 else f"{x['months_before']}か月前から警戒"))
+        L.append(f"| {l['start']} | " + " | ".join(cells) + " |")
+    L.append("| 当たり率 | " + " | ".join(
+        "—" if history["precision"][q]["rate"] is None else f"{int(history['precision'][q]['rate'])}%（警戒{history['precision'][q]['warn_months']}か月中）" for q in qs) + " |")
+    L.append("")
+    L.append("直近24か月の判定の推移（g=良好 c=注意 w=警戒 n=データ不足、左が古い）：")
+    months = history["months"][-24:]
+    L.append(f"- 期間：{months[0]} 〜 {months[-1]}")
+    for q in qs:
+        L.append(f"- {qname[q]}：{history['states'][q][-24:]}")
+    L.append("")
+
+    if with_series:
+        L.append("## 6. 直近の推移（月次は月末時点、日次・週次は月平均、四半期は各期）")
+        for i in ind_out:
+            v = tseries.get(i["id"])
+            if v is None or not i.get("ok"):
+                continue
+            v = v.dropna()
+            if i["freq"] == "Q":
+                pts = v.iloc[-8:]
+                lab = [f"{d.year}Q{(d.month - 1) // 3 + 1}" for d in pts.index]
+            elif i["freq"] == "M":
+                pts = v.iloc[-24:]
+                lab = [d.strftime("%Y-%m") for d in pts.index]
+            else:
+                pts = v.resample("ME").mean().dropna().iloc[-24:]
+                lab = [d.strftime("%Y-%m") for d in pts.index]
+            vals = ", ".join(f"{a} {_n(float(b), i['decimals'])}" for a, b in zip(lab, pts.values))
+            L.append(f"- {i['name']}（{i['unit'] or '指数'}）：{vals}")
+        L.append("")
+
+    L.append("## 注意点")
+    L.append("- 過去検証は改定後の値を使っており、当時の速報値での判定とは一致しない場合がある。")
+    L.append("- ミシガン大学指数はFREDでは提供元の要請により1か月遅れ。")
+    L.append("- S&P500（転載禁止）とハイイールド債スプレッド（公開には事前許可が必要）は含めていない。ISM製造業指数はFREDから削除済みのため、フィラデルフィア連銀の指数で代用。")
+    L.append("- 日次の金利は、日本時間1:47の実行時点で取得できる最新（米国の前営業日の終値）。")
+    return "\n".join(L) + "\n"
+
+
+# ----------------------------------------------------------------------------
 # メイン
 # ----------------------------------------------------------------------------
 def write_json(path: Path, obj) -> None:
@@ -673,6 +817,10 @@ def main() -> int:
         "recessions": recession_periods(usrec) if len(usrec) else [],
     })
     write_json(OUT_DIR / "history.json", history)
+    for fname, ws in (("ai_brief.md", False), ("ai_full.md", True)):
+        (OUT_DIR / fname).write_text(build_ai_text(
+            generated, today.isoformat(), settings, cfg["questions"], q_out, ind_out, tseries, notable, stale,
+            upcoming, failed, fallback_used, history, cycle_now, with_series=ws), encoding="utf-8")
 
     print("\n".join(lines))
     print(f"\n取得失敗 {len(failed)}件 / 代替 {len(fallback_used)}件 / 警告 {len(fred.warnings)}件")

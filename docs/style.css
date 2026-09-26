@@ -148,3 +148,7 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
 .tier.t-B { border-color: #5b6168; color: #3b4148; }
 .tier.t-C { border-color: transparent; color: #3b4148; padding-left: 0; }
 .calitem { display: inline-block; margin-right: 12px; }
+
+/* AIに渡す */
+.aibox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; padding: 10px 12px; border: 2px solid #111418; border-radius: 10px; }
+.aibox .btn { font-weight: 700; }
