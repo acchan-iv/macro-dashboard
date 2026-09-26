@@ -1,0 +1,61 @@
+name: 毎日データ更新
+
+on:
+  schedule:
+    - cron: "23 21 * * *"   # 毎日 21:23 UTC ＝ 日本時間 6:23
+  workflow_dispatch:         # 手動実行ボタン
+
+permissions:
+  contents: write            # 月1回の keepalive コミット用
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: ライブラリのインストール
+        run: pip install -r requirements.txt
+
+      - name: FREDからデータ取得・判定
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: python scripts/build_data.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      # GitHubは60日間コミットのないリポジトリの定期実行を自動停止するため、毎月1日に空コミットする
+      - name: keepalive
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(TZ=Asia/Tokyo date +%d)" = "01" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive $(TZ=Asia/Tokyo date +%F)"
+            git push
+          fi
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

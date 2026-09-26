@@ -18,7 +18,7 @@ GitHub Actions が毎朝 **日本時間 6:23** にデータを取り直し、Git
 ## はじめての設定（1回だけ・約10分）
 
 1. **リポジトリを作る**
-   GitHubで「New repository」→ 名前 `us-macro-tracker` → **Public** を選んで作成
+   GitHubで「New repository」→ 名前 `macro-dashboard` → **Public** を選んで作成
    （無料プランのGitHub PagesはPublicリポジトリが必要）
 
 2. **ファイルをアップロードする**
@@ -36,7 +36,7 @@ GitHub Actions が毎朝 **日本時間 6:23** にデータを取り直し、Git
 
 5. **初回を手動で動かす**
    Actions タブ →「毎日データ更新」→「Run workflow」
-   3〜5分で完了。ページは `https://<ユーザー名>.github.io/us-macro-tracker/`
+   3〜5分で完了。ページは `https://acchan-iv.github.io/macro-dashboard/`
 
 以降は毎朝自動で更新される。
 
@@ -53,7 +53,7 @@ GitHub Actions が毎朝 **日本時間 6:23** にデータを取り直し、Git
 
 ## AI連携
 
-`https://<ユーザー名>.github.io/us-macro-tracker/data/summary.json` の `handoff_text` に、
+`https://acchan-iv.github.io/macro-dashboard/data/summary.json` の `handoff_text` に、
 その日の5つの判定・大きな変化・更新遅れ・次の発表予定が文章でまとまっている。
 朝ルーティンやマクロ分析スキルからこのURLを読み込めば、手で写す必要がない。
 
