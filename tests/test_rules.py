@@ -44,7 +44,9 @@ REAL = {
 
 def run(asof):
     vw = b.View(REAL, {}, pd.Timestamp(asof), use_lag=False)
-    return {q: b.EVALUATORS[q](vw, P[q]) for q in P}
+    out = {q: b.EVALUATORS[q](vw, P[q]) for q in P if q != "jobs"}
+    out["jobs"] = b.JOBS_RULES["v1"](vw, P["jobs"])  # 旧ルールの検算（2026-09時点の実データ）
+    return out
 
 
 res = run("2026-09-26")
@@ -60,6 +62,15 @@ for q, exp in expected.items():
 prev = run("2026-08-31")["recession"]
 print(("OK " if prev["state"] == "warn" else "NG ") + f"recession(2026-08末) 期待=warn 結果={prev['state']} {prev['reasons']}")
 ok &= prev["state"] == "warn"
+# 雇用ルールv2：失業保険申請の増加率で判定が変わるか
+for r_val, exp in ((5.0, "caution"), (25.0, "warn")):
+    REAL["claims_r"] = s([("2026-09-19", r_val)])
+    vw = b.View(REAL, {}, pd.Timestamp("2026-09-26"), use_lag=False)
+    got = b.JOBS_RULES["v2"](vw, P["jobs"])
+    good = got["state"] == exp
+    print(("OK " if good else "NG ") + f"jobs v2 申請+{r_val:.0f}% 期待={exp} 結果={got['state']} {got['reasons'][1]}")
+    ok &= good
+
 # 2つの系列の差（2年債−FF金利）：両方に値がある日だけ計算されるか
 a = s([("2026-09-23", 4.85), ("2026-09-24", 4.87)])
 f_ = s([("2026-09-22", 4.33), ("2026-09-23", 4.33), ("2026-09-24", 4.33)])

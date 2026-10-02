@@ -38,15 +38,16 @@
       "question": "雇用は崩れていないか",
       "main": [
         "payems",
-        "sahm"
+        "sahm",
+        "icsa"
       ],
-      "rule_text": "良好＝サーム・ルール0.3未満 かつ 雇用者数の3か月平均が＋10万人超／警戒＝サーム・ルール0.5以上 または 3か月平均がマイナス",
+      "rule_text": "良好＝失業保険申請（4週平均）の1年最低からの増加10%未満 かつ サーム・ルール0.3未満 かつ 雇用者数の3か月平均＋10万人超／警戒＝申請が1年最低から20%以上増加 または サーム・ルール0.5以上",
       "params": {
         "sahm_good": 0.3,
         "sahm_bad": 0.5,
         "nfp3_good": 10.0,
         "nfp3_bad": 0.0,
-        "rule": "v1",
+        "rule": "v2",
         "claims_good": 10.0,
         "claims_bad": 20.0,
         "claims_bad_strict": 30.0
@@ -421,7 +422,7 @@
       "fred": "ICSA",
       "name": "新規失業保険申請件数",
       "question": "jobs",
-      "role": "sub",
+      "role": "main",
       "tier": "A",
       "freq": "W",
       "transform": "none",
