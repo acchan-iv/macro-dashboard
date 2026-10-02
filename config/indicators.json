@@ -45,7 +45,11 @@
         "sahm_good": 0.3,
         "sahm_bad": 0.5,
         "nfp3_good": 10.0,
-        "nfp3_bad": 0.0
+        "nfp3_bad": 0.0,
+        "rule": "v1",
+        "claims_good": 10.0,
+        "claims_bad": 20.0,
+        "claims_bad_strict": 30.0
       }
     },
     {

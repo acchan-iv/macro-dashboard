@@ -188,3 +188,32 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
 .explain summary { cursor: pointer; font-weight: 700; }
 .explain table.t td { text-align: left; vertical-align: top; }
 .explain ul { margin: 8px 0 4px; padding-left: 20px; }
+
+/* ページ上部の目次（固定） */
+.topnav { position: sticky; top: 0; z-index: 40; background: #fff; border-bottom: 2px solid var(--text); }
+.topnav .wrap { display: flex; gap: 4px; overflow-x: auto; padding-top: 6px; padding-bottom: 6px; scrollbar-width: none; }
+.topnav a { flex: 0 0 auto; text-decoration: none; color: var(--text); font-weight: 700; font-size: 14px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-strong); }
+.topnav a:hover { background: var(--text); color: #fff; }
+section[id] { scroll-margin-top: 56px; }
+
+/* 今日のまとめ */
+.headline { list-style: none; margin: 0; padding: 10px 14px; border: 2px solid var(--text); border-radius: 10px; }
+.headline li { padding: 4px 0; border-top: 1px solid var(--line); }
+.headline li:first-child { border-top: 0; }
+
+/* 判定の継続期間と直近12か月 */
+.qstreak { font-size: 13px; margin: 6px 0 2px; }
+.qtrail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.qtrail .note { margin: 0; font-size: 12px; white-space: nowrap; }
+.trail { display: inline-flex; gap: 2px; }
+.tc { display: inline-block; width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.25); }
+
+/* 景気後退確率 */
+.rprob { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.rpv { font-size: 26px; }
+.rprob details { flex-basis: 100%; }
+
+/* 改定表示 */
+.rrev { grid-column: 2 / -1; font-size: 13px; color: var(--text); }
+@media (max-width: 720px) { .rrev { grid-column: 1 / -1; grid-row: 5; } }
+table.t tr.used td { background: #eef6ee; }

@@ -77,6 +77,18 @@ class Fred:
             data = self._get("series/observations", series_id=sid, observation_start=start)
         return _obs_to_series(data["observations"])
 
+    def observations_asof(self, sid: str, start: str, asof: str) -> pd.Series | None:
+        """asof の日に公表されていた時点のデータ（ALFRED）。改定前の値を知るために使う"""
+        if self.offline:
+            return None
+        try:
+            data = self._get("series/observations", series_id=sid, observation_start=start,
+                             realtime_start=asof, realtime_end=asof)
+            return _obs_to_series(data["observations"])
+        except Exception as e:  # noqa: BLE001
+            self.warnings.append(f"改定前データの取得に失敗: {sid} ({str(e)[:80]})")
+            return None
+
     def fallback_observations(self, ind_id: str) -> pd.Series | None:
         """取得失敗時：前回公開したデータを読み込む"""
         if not self.site_url:
@@ -266,7 +278,10 @@ def indicator_metrics(ind: dict, raw: pd.Series, v: pd.Series, settings: dict, t
         "prev": f(prev), "change": f(last - prev) if prev is not None else None,
         "year_ago": f(ya), "yoy_change": f(last - ya) if ya is not None else None,
         "ma": f(ma),
-        "z": f(z, 2), "big_move": bool(z is not None and abs(z) >= settings["big_move_z"]),
+        # z値は CHANGE_LAG 期間の変化で計算する（日次は5営業日）。表示もその期間の変化に合わせる
+        "z": f(z, 2), "z_move": f(hist.iloc[-1]) if len(hist) else None,
+        "z_span": {"D": "5営業日", "W": "前週から", "M": "前月から", "Q": "前期から"}[ind["freq"]],
+        "big_move": False,  # 発表の新しさを確認してから main で決める
         "percentile_10y": f(pct, 0),
         "zone": zone_state(last, ind.get("zones")),
         "trend": trend_info(vv, ind),
@@ -329,6 +344,11 @@ def eval_growth(vw: View, p: dict) -> dict:
 
 
 def eval_jobs(vw: View, p: dict) -> dict:
+    """設定 params.rule で使うルールを選ぶ（v1＝従来、v2系＝失業保険申請の上昇を加えた候補）"""
+    return JOBS_RULES.get(p.get("rule", "v1"), eval_jobs_v1)(vw, p)
+
+
+def eval_jobs_v1(vw: View, p: dict) -> dict:
     sahm, sd = vw.last("sahm")
     nfp = vw.get("payems")
     if sahm is None or len(nfp) < 3:
@@ -350,6 +370,51 @@ def eval_jobs(vw: View, p: dict) -> dict:
     if nfp3 <= p["nfp3_good"]:
         why.append(f"雇用の伸びが月{p['nfp3_good']:.0f}万人以下")
     return {"state": "caution", "reasons": [vals, "・".join(why)]}
+
+
+def _jobs_v2(vw: View, p: dict, mode: str) -> dict:
+    """失業保険申請（4週平均）が過去1年の最低からどれだけ増えたか（解雇の増え始め＝先行）＋サーム・ルール（確認）"""
+    sahm, sd = vw.last("sahm")
+    r, rd = vw.last("claims_r")
+    nfp = vw.get("payems")
+    if sahm is None or r is None or len(nfp) < 3:
+        return {"state": "na", "reasons": ["データ不足"]}
+    nfp3 = float(nfp.iloc[-3:].mean())
+    vals = (f"失業保険申請（4週平均）が1年の最低から{r:+.0f}%（{_d(rd)}）／サーム・ルール {sahm:.2f}（{_d(sd)}）"
+            f"／雇用者数 3か月平均 {nfp3:+.1f}万人")
+    rb = p.get("claims_bad", 20.0) if mode != "v2c" else p.get("claims_bad_strict", 30.0)
+    claims_warn = r >= rb and (mode != "v2b" or nfp3 < p["nfp3_good"])
+    if sahm >= p["sahm_bad"] or claims_warn:
+        why = []
+        if claims_warn:
+            why.append(f"失業保険申請が1年の最低から{rb:.0f}%以上増加（解雇の増え始め）")
+        if sahm >= p["sahm_bad"]:
+            why.append(f"サーム・ルールが{p['sahm_bad']}以上")
+        return {"state": "warn", "reasons": [vals, "・".join(why)]}
+    if sahm < p["sahm_good"] and r < p.get("claims_good", 10.0) and nfp3 > p["nfp3_good"]:
+        return {"state": "good", "reasons": [vals, "解雇の増加なし・失業率も安定・雇用も増加"]}
+    why = []
+    if r >= p.get("claims_good", 10.0):
+        why.append(f"失業保険申請が1年の最低から{p.get('claims_good', 10.0):.0f}%以上増加")
+    if sahm >= p["sahm_good"]:
+        why.append(f"サーム・ルールが{p['sahm_good']}以上")
+    if nfp3 <= p["nfp3_good"]:
+        why.append(f"雇用の伸びが月{p['nfp3_good']:.0f}万人以下")
+    return {"state": "caution", "reasons": [vals, "・".join(why)]}
+
+
+JOBS_RULES = {
+    "v1": eval_jobs_v1,
+    "v2": lambda vw, p: _jobs_v2(vw, p, "v2"),    # 申請+20% または サーム0.5
+    "v2b": lambda vw, p: _jobs_v2(vw, p, "v2b"),  # 申請+20% かつ 雇用の伸び鈍化、または サーム0.5
+    "v2c": lambda vw, p: _jobs_v2(vw, p, "v2c"),  # 申請+30% または サーム0.5
+}
+JOBS_RULE_TEXT = {
+    "v1": "良好＝サーム・ルール0.3未満 かつ 雇用者数の3か月平均が＋10万人超／警戒＝サーム・ルール0.5以上 または 3か月平均がマイナス",
+    "v2": "良好＝失業保険申請（4週平均）の1年最低からの増加10%未満 かつ サーム・ルール0.3未満 かつ 雇用者数の3か月平均＋10万人超／警戒＝申請が1年最低から20%以上増加 または サーム・ルール0.5以上",
+    "v2b": "良好＝v2と同じ／警戒＝申請が1年最低から20%以上増加 かつ 雇用の伸びが月10万人以下、または サーム・ルール0.5以上",
+    "v2c": "良好＝v2と同じ／警戒＝申請が1年最低から30%以上増加 または サーム・ルール0.5以上",
+}
 
 
 def eval_inflation(vw: View, p: dict) -> dict:
@@ -437,6 +502,24 @@ def cycle_raw(growth_state: str, vw: View) -> str | None:
     return CYCLE[(growth_state == "good", rising)]
 
 
+def recession_probability(spread_daily: pd.Series) -> dict | None:
+    """NY連銀の手法（Estrella & Mishkin）：P = Φ(−0.5333 − 0.6330 × 月平均の10年−3か月差)。12か月先の景気後退確率"""
+    from statistics import NormalDist
+    s = spread_daily.dropna()
+    if len(s) < 300:
+        return None
+    mon = s.resample("ME").mean().dropna()
+    phi = NormalDist().cdf
+    prob = lambda x: phi(-0.5333 - 0.6330 * float(x)) * 100  # noqa: E731
+    hist = [{"month": d.strftime("%Y-%m"), "p": round(prob(v), 1)} for d, v in mon.iloc[-36:].items()]
+    return {
+        "value": round(prob(mon.iloc[-1]), 1), "month": mon.index[-1].strftime("%Y-%m"), "spread": round(float(mon.iloc[-1]), 2),
+        "year_ago": round(prob(mon.iloc[-13]), 1) if len(mon) > 13 else None,
+        "history": hist,
+        "note": "NY連銀が公表しているモデル（10年−3か月の金利差の月平均から、12か月先に景気後退となる確率を計算）を、FREDの金利差で再計算した近似値。NY連銀は3か月債に別の利回り（債券換算）を使うため、公表値とは少し異なる。",
+    }
+
+
 # ----------------------------------------------------------------------------
 # 過去検証
 # ----------------------------------------------------------------------------
@@ -469,29 +552,42 @@ def run_history(cfg: dict, tseries: dict, lags: dict, usrec: pd.Series, today: d
 
     # 景気後退の開始月
     starts = [i for i in range(1, len(rec_str)) if rec_str[i] == "1" and rec_str[i - 1] == "0"]
-    leads = []
-    for i in starts:
-        row = {"start": months[i].strftime("%Y-%m"), "q": {}}
-        for q in qids:
-            s = states[q]
+    horizon = len(months) - 24
+
+    def score(s: list) -> tuple:
+        """(各景気後退の前に警戒が出たか, 当たり率) を返す"""
+        lead = []
+        for i in starts:
             window = s[max(0, i - 24): i + 1]
             first = next((k for k, c in enumerate(window) if c == "w"), None)
-            row["q"][q] = {
-                "months_before": (len(window) - 1 - first) if first is not None else None,
-                "warn_at_start": s[i] == "w",
-            }
-        leads.append(row)
-
-    # 当たり率：警戒の月のうち、24か月以内に景気後退が始まった割合（直近24か月は未確定のため除外）
-    precision = {}
-    horizon = len(months) - 24
-    for q in qids:
-        s = states[q]
+            lead.append({"months_before": (len(window) - 1 - first) if first is not None else None, "warn_at_start": s[i] == "w"})
+        # 当たり率：警戒の月のうち、24か月以内に景気後退が始まった割合（直近24か月は未確定のため除外）
         cand = [i for i in range(max(0, horizon)) if s[i] == "w" and rec_str[i] == "0"]
         hit = [i for i in cand if any(st for st in starts if i < st <= i + 24)]
-        precision[q] = {
-            "warn_months": len(cand), "hit_months": len(hit),
-            "rate": f(len(hit) / len(cand) * 100, 0) if cand else None,
+        prec = {"warn_months": len(cand), "hit_months": len(hit), "rate": f(len(hit) / len(cand) * 100, 0) if cand else None}
+        return lead, prec
+
+    leads = [{"start": months[i].strftime("%Y-%m"), "q": {}} for i in starts]
+    precision = {}
+    for q in qids:
+        lead, prec = score(states[q])
+        for row, x in zip(leads, lead):
+            row["q"][q] = x
+        precision[q] = prec
+
+    # 雇用ルールの候補比較（どれを使うかは設定ファイルで切り替え）
+    rule_compare = {}
+    for name, fn in JOBS_RULES.items():
+        sv = []
+        for m in months:
+            vw = View(tseries, lags, m, use_lag=True)
+            sv.append(code[fn(vw, params["jobs"])["state"]])
+        lead, prec = score(sv)
+        rule_compare[name] = {
+            "text": JOBS_RULE_TEXT[name],
+            "warned_before": sum(1 for x in lead if x["months_before"] is not None),
+            "leads": [{"start": months[i].strftime("%Y-%m"), **x} for i, x in zip(starts, lead)],
+            "precision": prec, "last24": "".join(sv[-24:]), "current": sv[-1],
         }
 
     return {
@@ -501,6 +597,8 @@ def run_history(cfg: dict, tseries: dict, lags: dict, usrec: pd.Series, today: d
         "cycle": cycle,
         "leads": leads,
         "precision": precision,
+        "jobs_rule": params["jobs"].get("rule", "v1"),
+        "rule_compare": rule_compare,
         "note": "各月末時点で『発表済みだったはずのデータ』だけで判定（発表までの日数は概算）。後からの改定値を使っているため、当時の速報値での判定とは一致しない場合がある。",
     }
 
@@ -539,7 +637,8 @@ def _s(x, d):
 
 
 def build_ai_text(generated, today, settings, qcfg, q_out, ind_out, tseries, notable, stale, upcoming,
-                  failed, fallback_used, history, cycle_now, with_series: bool) -> str:
+                  failed, fallback_used, history, cycle_now, with_series: bool,
+                  headline=None, rprob=None, recent=None) -> str:
     tl = settings.get("tier_labels", {})
     qname = {q["id"]: q["name"] for q in qcfg}
     qname["reference"] = "参考"
@@ -554,11 +653,19 @@ def build_ai_text(generated, today, settings, qcfg, q_out, ind_out, tseries, not
     L.append("- " + settings.get("tier_rule", ""))
     L.append("")
 
+    if headline:
+        L.append("## 0. 今日のまとめ")
+        L += [f"- {h}" for h in headline]
+        L.append("")
     L.append("## 1. 5つの問いの判定")
-    L.append("| 問い | 判定 | 根拠（最新値） | 理由 |")
-    L.append("|---|---|---|---|")
+    L.append("| 問い | 判定 | いつから | 根拠（最新値） | 理由 |")
+    L.append("|---|---|---|---|---|")
     for q in q_out:
-        L.append(f"| {q['question']} | {q['label']} | {q['reasons'][0] if q['reasons'] else ''} | {q['reasons'][1] if len(q['reasons']) > 1 else ''} |")
+        since = f"{q.get('since', '')}〜（{q.get('streak_months', '')}か月目）"
+        L.append(f"| {q['question']} | {q['label']} | {since} | {q['reasons'][0] if q['reasons'] else ''} | {q['reasons'][1] if len(q['reasons']) > 1 else ''} |")
+    if rprob:
+        L.append("")
+        L.append(f"12か月先の景気後退確率（NY連銀モデルの近似）：{rprob['value']}%（{rprob['month']}、金利差 {rprob['spread']:+.2f}pt、1年前 {rprob['year_ago']}%）。{rprob['note']}")
     L.append("")
     L.append("判定ルール：")
     iname = {i["id"]: i["name"] for i in ind_out}
@@ -593,20 +700,25 @@ def build_ai_text(generated, today, settings, qcfg, q_out, ind_out, tseries, not
     L.append("")
 
     L.append("## 2-2. 最近の発表結果（直近1週間・米国日付）")
-    rec = [i for i in ind_out if i.get("ok") and i.get("last_release")]
-    rec.sort(key=lambda i: (i["last_release"], -TIER_ORDER.get(i.get("tier"), 9)), reverse=True)
+    rec = recent or []
     if not rec:
         L.append("- なし")
     for i in rec:
         cu = "pt" if i["unit"] == "%" else i["unit"]
-        L.append(f"- {i['last_release']} {i['name']}【{tl.get(i.get('tier'), '')}】：{_n(i['latest'], i['decimals'])}{i['unit']}"
-                 f"（{i['latest_date']}分、前回 {_n(i['prev'], i['decimals'])}{i['unit']}、変化 {_s(i['change'], i['decimals'])}{cu}）")
+        rv = i.get("revision")
+        rtxt = ""
+        if rv and rv["type"] == "same":
+            rtxt = f"、改定：前回発表時 {_n(rv['before'], i['decimals'])} → 今回 {_n(rv['after'], i['decimals'])}"
+        elif rv and rv["type"] == "prior" and rv["before"] != rv["after"]:
+            rtxt = f"、前の期（{rv['period']}）も改定 {_n(rv['before'], i['decimals'])} → {_n(rv['after'], i['decimals'])}"
+        L.append(f"- {i['date']} {i['name']}【{tl.get(i.get('tier'), '')}】：{_n(i['latest'], i['decimals'])}{i['unit']}"
+                 f"（{i['latest_date']}分、前の期 {_n(i['prev'], i['decimals'])}{i['unit']}、変化 {_s(i['change'], i['decimals'])}{cu}{rtxt}）")
     L.append("")
     L.append("## 3. 気になる動き")
     if not (notable or stale or failed or fallback_used):
         L.append("- 特になし")
     for n in notable:
-        L.append(f"- 大きな変化：{n['name']}（直近の変化 {_s(n['change'], 2)}、z={_s(n['z'], 1)}、{n['latest_date']}）")
+        L.append(f"- 大きな変化：{n['name']}（{n['span']}の変化 {_s(n['change'], max(2, n['decimals']))}、z={_s(n['z'], 1)}、データ日付 {n['latest_date']}）")
     for x in stale:
         L.append(f"- 更新遅れ：{x['name']}（最新データ {x['latest_date']}、{x['age_days']}日前）")
     for x in failed:
@@ -637,6 +749,13 @@ def build_ai_text(generated, today, settings, qcfg, q_out, ind_out, tseries, not
     L.append("| 当たり率 | " + " | ".join(
         "—" if history["precision"][q]["rate"] is None else f"{int(history['precision'][q]['rate'])}%（警戒{history['precision'][q]['warn_months']}か月中）" for q in qs) + " |")
     L.append("")
+    rc = history.get("rule_compare") or {}
+    if rc:
+        L.append(f"雇用ルールの候補比較（採用中：{history.get('jobs_rule')}）：")
+        for k, v in rc.items():
+            pr = v["precision"]
+            L.append(f"- {k}：景気後退{len(v['leads'])}回中{v['warned_before']}回で事前に警戒／当たり率 {pr['rate']}%（警戒{pr['warn_months']}か月）／{v['text']}")
+        L.append("")
     L.append("直近24か月の判定の推移（g=良好 c=注意 w=警戒 n=データ不足、左が古い）：")
     months = history["months"][-24:]
     L.append(f"- 期間：{months[0]} 〜 {months[-1]}")
@@ -748,6 +867,10 @@ def main() -> int:
         m["next_release"] = nxt[0] if nxt else None
         m["upcoming"] = nxt[:3]
         m["last_release"] = past[-1] if past else None
+        # 大きな変化：z値が基準以上、かつ「最近出たデータ」だけ（古いデータの変化は対象外）
+        if m.get("ok") and m.get("z") is not None and abs(m["z"]) >= settings["big_move_z"] and not m["fresh"]["stale"]:
+            recent_data = (ind["freq"] in ("D", "W") and m["fresh"]["age_days"] <= 10) or m["last_release"] is not None
+            m["big_move"] = bool(recent_data)
         meta = {k: ind.get(k) for k in (
             "id", "fred", "derived", "name", "question", "role", "tier", "freq", "transform", "unit", "decimals",
             "direction", "zones", "ref_line", "desc", "read", "good", "caution", "citation")}
@@ -762,6 +885,13 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001
                 fred.warnings.append(f"景気後退期データの取得に失敗 ({e})")
 
+    # 失業保険申請（4週平均）が過去1年の最低からどれだけ増えたか（%）＝雇用ルールv2系で使う
+    if "icsa" in tseries:
+        ma4 = tseries["icsa"].dropna().rolling(4).mean()
+        low = ma4.shift(1).rolling(52, min_periods=40).min()
+        tseries["claims_r"] = ((ma4 / low - 1) * 100).dropna()
+        lags["claims_r"] = lags.get("icsa", 5)
+
     # 現在の判定（発表済みデータを全部使う）
     vw_now = View(tseries, lags, pd.Timestamp(today) + pd.Timedelta(days=1), use_lag=False)
     q_out = []
@@ -769,17 +899,35 @@ def main() -> int:
         r = EVALUATORS[q["id"]](vw_now, q["params"])
         q_out.append({
             "id": q["id"], "name": q["name"], "question": q["question"], "main": q["main"],
-            "rule_text": q["rule_text"], "state": r["state"], "label": STATE_LABEL[r["state"]],
+            "rule_text": JOBS_RULE_TEXT[q["params"].get("rule", "v1")] if q["id"] == "jobs" else q["rule_text"],
+            "state": r["state"], "label": STATE_LABEL[r["state"]],
             "reasons": r["reasons"],
         })
 
     history = run_history(cfg, tseries, lags, usrec, today)
     cycle_now = history["cycle"][-1] if history["cycle"] else None
 
+    # 各判定が「いつから今の状態か」「その前は何だったか」（月次の判定履歴＋今日の判定）
+    code = {"good": "g", "caution": "c", "warn": "w", "na": "n"}
+    decode = {v: k for k, v in code.items()}
+    for q in q_out:
+        hs = list(history["states"][q["id"]])
+        hs[-1] = code[q["state"]]
+        n = 1
+        while n < len(hs) and hs[-1 - n] == hs[-1]:
+            n += 1
+        q["streak_months"] = n
+        q["since"] = history["months"][len(hs) - n]
+        q["prev_state"] = decode[hs[-1 - n]] if n < len(hs) else None
+        q["last_month_state"] = decode[hs[-2]] if len(hs) > 1 else None
+        q["trail"] = "".join(hs[-12:])
+
+    rprob = recession_probability(tseries["t10y3m"]) if "t10y3m" in tseries else None
+
     # 注目（大きな変化・古いデータ）
     notable = [
-        {"id": i["id"], "name": i["name"], "z": i["z"], "change": i["change"], "unit": i["unit"],
-         "latest": i["latest"], "latest_date": i["latest_date"]}
+        {"id": i["id"], "name": i["name"], "z": i["z"], "change": i["z_move"], "span": i["z_span"], "unit": i["unit"],
+         "decimals": i["decimals"], "latest": i["latest"], "latest_date": i["latest_date"]}
         for i in ind_out if i.get("ok") and i.get("big_move")
     ]
     stale = [{"id": i["id"], "name": i["name"], "latest_date": i["latest_date"], "age_days": i["fresh"]["age_days"]}
@@ -805,10 +953,53 @@ def main() -> int:
     ]
     recent.sort(key=lambda x: (x["date"], -TIER_ORDER.get(x["tier"], 9)), reverse=True)
 
+    # 改定：前回発表時点（発表日の前日）のデータと比べる
+    ind_by_id = {i["id"]: i for i in cfg["indicators"]}
+    for x in recent:
+        ind = ind_by_id[x["id"]]
+        x["revision"] = None
+        if ind.get("derived") or ind["freq"] == "D":
+            continue
+        asof = (dt.date.fromisoformat(x["date"]) - dt.timedelta(days=1)).isoformat()
+        start = (pd.Timestamp(x["latest_date"]) - pd.DateOffset(years=3)).strftime("%Y-%m-%d")
+        old_raw = fred.observations_asof(ind["fred"], start, asof)
+        if old_raw is None or len(old_raw) == 0:
+            continue
+        old = transform(old_raw, ind).dropna()
+        cur = tseries[x["id"]].dropna()
+        ld = pd.Timestamp(x["latest_date"])
+        if ld in old.index:  # 同じ期の数字が修正された（例：GDPの2次・3次推計）
+            x["revision"] = {"type": "same", "before": f(float(old[ld])), "after": x["latest"]}
+        elif len(cur) > 1 and cur.index[-2] in old.index:  # 新しい期の発表と同時に、前の期が修正された
+            pdx = cur.index[-2]
+            x["revision"] = {"type": "prior", "period": pdx.strftime("%Y-%m-%d"),
+                             "before": f(float(old[pdx])), "after": f(float(cur.iloc[-2]))}
+
+    # 今日のまとめ（3〜4行）
+    headline = []
+    changed = [f"{q['name']} {STATE_LABEL[q['last_month_state']]}→{q['label']}" for q in q_out
+               if q.get("last_month_state") and q["last_month_state"] != q["state"]]
+    headline.append("判定の変化（先月比）：" + ("、".join(changed) if changed else "なし"))
+    long_warn = [f"{q['name']}は警戒{q['streak_months']}か月目" for q in q_out if q["state"] == "warn"]
+    if long_warn:
+        headline.append("続いている警戒：" + "、".join(long_warn))
+    if recent:
+        d0 = recent[0]["date"]
+        top = [x for x in recent if x["date"] == d0 and x["tier"] in ("S", "A")]
+        if top:
+            headline.append(f"直近の発表（{d0[5:].replace('-', '/')}）：" + "、".join(
+                f"{x['name']} {_n(x['latest'], x['decimals'])}{x['unit']}" for x in top[:3]))
+    nxt = next((u for u in upcoming if any(it["tier"] == "S" for it in u["items"])), None)
+    if nxt:
+        headline.append(f"次の超重要（{nxt['date'][5:].replace('-', '/')}）：" + "、".join(it["name"] for it in nxt["items"] if it["tier"] == "S"))
+
     mark = {"good": "良好", "caution": "注意", "warn": "警戒", "na": "データ不足"}
     lines = [f"【米国マクロ指標トラッカー {today.isoformat()}】"]
+    lines += [f"＊{h}" for h in headline]
     for q in q_out:
-        lines.append(f"・{q['name']}：{mark[q['state']]}｜{q['reasons'][0]}")
+        lines.append(f"・{q['name']}：{mark[q['state']]}（{q['streak_months']}か月目）｜{q['reasons'][0]}")
+    if rprob:
+        lines.append(f"・12か月先の景気後退確率（NY連銀モデルの近似）：{rprob['value']}%（1年前 {rprob['year_ago']}%）")
     if settings.get("show_cycle") and cycle_now:
         lines.append(f"・景気サイクル（参考）：{cycle_now}")
     if notable:
@@ -828,6 +1019,7 @@ def main() -> int:
         "questions": q_out,
         "cycle": cycle_now if settings.get("show_cycle") else None,
         "notable": notable, "stale": stale, "upcoming": upcoming, "recent": recent,
+        "headline": headline, "recession_prob": rprob,
         "failed": failed, "fallback_used": fallback_used, "warnings": fred.warnings,
         "handoff_text": "\n".join(lines),
     }
@@ -843,7 +1035,8 @@ def main() -> int:
     for fname, ws in (("ai_brief.md", False), ("ai_full.md", True)):
         (OUT_DIR / fname).write_text(build_ai_text(
             generated, today.isoformat(), settings, cfg["questions"], q_out, ind_out, tseries, notable, stale,
-            upcoming, failed, fallback_used, history, cycle_now, with_series=ws), encoding="utf-8")
+            upcoming, failed, fallback_used, history, cycle_now, with_series=ws,
+            headline=headline, rprob=rprob, recent=recent), encoding="utf-8")
 
     print("\n".join(lines))
     print(f"\n取得失敗 {len(failed)}件 / 代替 {len(fallback_used)}件 / 警告 {len(fred.warnings)}件")

@@ -9,6 +9,11 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<nav class="topnav" aria-label="ページ内の移動">
+  <div class="wrap">
+    <a href="#sec-summary">まとめ</a><a href="#sec-recent">発表結果</a><a href="#sec-q">判定</a><a href="#sec-notable">動き</a><a href="#sec-cal">予定</a><a href="#sec-list">一覧</a><a href="#sec-hist">検証</a>
+  </div>
+</nav>
 <header class="wrap">
   <h1 id="title">米国マクロ指標トラッカー</h1>
   <p class="sub" id="meta">読み込み中…</p>
@@ -23,29 +28,35 @@
 </header>
 
 <main class="wrap">
-  <section>
+  <section id="sec-summary">
+    <h2>今日のまとめ</h2>
+    <div id="headline"></div>
+  </section>
+
+  <section id="sec-recent">
     <h2>最近の発表結果（直近1週間）</h2>
     <div id="recent"></div>
   </section>
 
-  <section>
+  <section id="sec-q">
     <h2>5つの問い（今日の判定）</h2>
     <p class="note">各問いの判定は、主役2本の指標だけで機械的に出しています。補助指標は判定に使わず、下の一覧で確認用に表示しています。</p>
     <div id="questions" class="qgrid"></div>
+    <div id="rprob"></div>
     <div id="cycle"></div>
   </section>
 
-  <section>
+  <section id="sec-notable">
     <h2>気になる動き</h2>
     <div id="notable"></div>
   </section>
 
-  <section>
+  <section id="sec-cal">
     <h2>発表予定（今後3週間）</h2>
     <div id="calendar"></div>
   </section>
 
-  <section>
+  <section id="sec-list">
     <h2>指標一覧</h2>
     <div class="filters">
       <div class="range" role="radiogroup" aria-label="表示する重要度の範囲">
@@ -62,11 +73,12 @@
     <div id="groups"></div>
   </section>
 
-  <section>
+  <section id="sec-hist">
     <h2>過去の判定（ルールの検証）</h2>
     <p class="note" id="histnote"></p>
     <div id="history"></div>
     <div id="leads"></div>
+    <div id="rulecmp"></div>
   </section>
 
   <footer>

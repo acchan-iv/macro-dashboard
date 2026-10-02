@@ -76,7 +76,7 @@ async function load() {
   document.title = IND.settings.site_title;
   $('title').textContent = IND.settings.site_title;
   IND.questions.forEach((q) => { QNAMES[q.id] = q.name; });
-  renderHeader(); renderRecent(); renderQuestions(); renderNotable(); renderCalendar(); renderChips(); renderGroups(); renderHistory();
+  renderHeader(); renderHeadline(); renderRecent(); renderQuestions(); renderRprob(); renderRuleCompare(); renderNotable(); renderCalendar(); renderChips(); renderGroups(); renderHistory();
 }
 
 function renderHeader() {
@@ -89,6 +89,19 @@ function renderHeader() {
   $('alerts').innerHTML = a.join('');
 }
 
+function renderHeadline() {
+  const h = SUM.headline || [];
+  $('headline').innerHTML = h.length
+    ? `<ul class="headline">${h.map((x) => { const i = x.indexOf('：'); return i > 0 ? `<li><b>${esc(x.slice(0, i))}</b>　${esc(x.slice(i + 1))}</li>` : `<li>${esc(x)}</li>`; }).join('')}</ul>`
+    : '<p class="empty">まとめを作れませんでした。</p>';
+}
+
+// 直近12か月の判定の並び（色＋記号、左が古い）
+function trailHtml(t) {
+  if (!t) return '';
+  return `<span class="trail" aria-label="直近12か月の判定（左が古い）">${[...t].map((c) => { const k = CODE[c] || 'na'; return `<i class="tc" style="background:${ST[k].color}" title="${ST[k].label}"></i>`; }).join('')}</span>`;
+}
+
 function renderQuestions() {
   $('questions').innerHTML = SUM.questions.map((q) => `
     <button class="qcard st-${q.state}" data-q="${q.id}" title="${esc(q.rule_text)}">
@@ -96,6 +109,8 @@ function renderQuestions() {
       <p class="qq">${esc(q.question)}</p>
       <p class="qvals">${esc(q.reasons[0] || '')}</p>
       <p class="qwhy">${esc(q.reasons[1] || '')}</p>
+      <p class="qstreak">${q.streak_months ? `${esc(q.label)} <b>${q.streak_months}か月目</b>（${esc(q.since)}〜）` : ''}${q.prev_state && q.streak_months ? `／その前：${esc(ST[q.prev_state].label)}` : ''}</p>
+      <div class="qtrail"><span class="note">直近12か月</span>${trailHtml(q.trail)}</div>
     </button>`).join('') +
     `<details style="grid-column:1/-1"><summary>判定ルールを見る</summary><ul>${SUM.questions.map((q) => `<li><b>${esc(q.name)}</b>：${esc(q.rule_text)}</li>`).join('')}</ul></details>`;
   document.querySelectorAll('.qcard').forEach((b) => b.addEventListener('click', () => {
@@ -105,6 +120,39 @@ function renderQuestions() {
   if (IND.settings.show_cycle && SUM.cycle) {
     $('cycle').innerHTML = `<div class="cyclebox"><b>景気サイクル（参考）：${esc(SUM.cycle)}</b>　景気の判定×FF金利の6か月の方向で機械的に分類。2か月続けて同じ判定の時だけ切り替えています。</div>`;
   }
+}
+
+function renderRprob() {
+  const r = SUM.recession_prob;
+  if (!r) { $('rprob').innerHTML = ''; return; }
+  const v = r.history.map((x) => x.p);
+  const W = 260, H = 44, max = Math.max(50, ...v);
+  const pts = v.map((p, k) => `${(k / (v.length - 1)) * W},${(H - 2 - (p / max) * (H - 4)).toFixed(1)}`).join(' ');
+  const y30 = H - 2 - (30 / max) * (H - 4);
+  const lvl = r.value >= 30 ? 'warn' : r.value >= 15 ? 'caution' : 'good';
+  $('rprob').innerHTML = `<div class="rprob">
+    <div><span class="note">12か月先の景気後退確率（NY連銀モデルの近似）</span><br>
+      <b class="rpv">${fmt(r.value, 1)}%</b> ${badge(lvl, true)}　<span class="note">${esc(r.month)}／1年前 ${fmt(r.year_ago, 1)}%／10年−3か月差 ${fmtSigned(r.spread, 2)}pt</span></div>
+    <svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="max-width:300px" aria-label="直近3年の推移">
+      <line x1="0" x2="${W}" y1="${y30}" y2="${y30}" stroke="#5b6168" stroke-dasharray="3 3"/>
+      <polyline points="${pts}" fill="none" stroke="${C.blue}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    <details><summary>この確率について</summary><p class="note">${esc(r.note)} 点線は30%（NY連銀モデルで過去の景気後退前によく超えた水準の目安）。15%未満＝良好、15〜30%＝注意、30%以上＝警戒として表示。</p></details>
+  </div>`;
+}
+
+function revHtml(x) {
+  const r = x.revision;
+  if (!r || r.before === null || r.before === undefined) return '';
+  const d = x.decimals, u = x.unit;
+  if (r.type === 'same') {
+    if (Math.abs(r.after - r.before) < 1e-9) return `<span class="rrev">改定なし（前回発表時と同じ ${fmt(r.before, d)}${esc(u)}）</span>`;
+    const up = r.after > r.before;
+    return `<span class="rrev"><b>${up ? '上方' : '下方'}改定</b>：前回発表時 ${fmt(r.before, d)}${esc(u)} → 今回 ${fmt(r.after, d)}${esc(u)}</span>`;
+  }
+  if (r.type === 'prior' && Math.abs(r.after - r.before) >= 1e-9) {
+    return `<span class="rrev">前の期（${dateLabel(r.period, x.freq)}）も改定：${fmt(r.before, d)} → ${fmt(r.after, d)}${esc(u)}</span>`;
+  }
+  return '';
 }
 
 function renderRecent() {
@@ -129,12 +177,13 @@ function renderRecent() {
       <span class="rdate">${mdw(x.date)}</span>
       <span class="rname">${tierChip(x.tier)}${esc(x.name)}${x.big_move ? '<span class="big">大きな変化</span>' : ''}</span>
       <span class="rval"><b>${fmt(x.latest, x.decimals)}</b>${esc(x.unit)}<small>${dateLabel(x.latest_date, x.freq)}分</small></span>
-      <span class="rprev">前回 ${fmt(x.prev, x.decimals)}${esc(x.unit)}</span>
+      <span class="rprev">前の期 ${fmt(x.prev, x.decimals)}${esc(x.unit)}</span>
       <span class="rchg ${changeClass(i, x.prev, x.latest)}">${arrow(x.change)} ${fmtSigned(x.change, x.decimals)}${esc(cu)}</span>
+      ${revHtml(x)}
     </div>`;
   }).join('');
   $('recent').innerHTML = toggle + `<div class="rlist">${rows}</div>
-    <p class="note">日付は米国の発表日。色は変化が景気・物価にとって良い方向なら緑、悪い方向なら赤（金利など方向で良し悪しを決めない指標は黒）。市場予想との比較は未対応。</p>`;
+    <p class="note">日付は米国の発表日。「変化」は前の期との差。色は景気・物価にとって良い方向なら緑、悪い方向なら赤（金利など方向で良し悪しを決めない指標は黒）。「改定」は同じ期の数字が前回発表時から修正されたもの。市場予想との比較は未対応。</p>`;
   bindToggle();
   document.querySelectorAll('.rrow').forEach((el) => {
     el.addEventListener('click', () => openModal(el.dataset.id));
@@ -144,7 +193,7 @@ function renderRecent() {
 
 function renderNotable() {
   const items = [];
-  SUM.notable.forEach((n) => items.push(`<li><span class="big">大きな変化</span> <b>${esc(n.name)}</b>：直近の変化（${fmtSigned(n.change, 2)}${esc(n.unit === '%' ? 'pt' : n.unit)}）が過去20年の変化の中で珍しい大きさです（z=${fmtSigned(n.z, 1)}）。</li>`));
+  SUM.notable.forEach((n) => items.push(`<li><span class="big">大きな変化</span> <b>${esc(n.name)}</b>：${esc(n.span || '直近')}の変化（${fmtSigned(n.change, Math.max(2, n.decimals ?? 2))}${esc(n.unit === '%' ? 'pt' : n.unit)}）が過去20年の同じ期間の変化の中で珍しい大きさです（z=${fmtSigned(n.z, 1)}、データ日付 ${esc(n.latest_date)}）。</li>`));
   SUM.stale.forEach((s) => items.push(`<li><span class="big">更新遅れ</span> <b>${esc(s.name)}</b>：最新データが${esc(s.latest_date)}（${s.age_days}日前）のままです。発表の延期か取得の問題の可能性があります。</li>`));
   (SUM.warnings || []).forEach((w) => items.push(`<li>${esc(w)}</li>`));
   $('notable').innerHTML = items.length ? `<ul class="list">${items.join('')}</ul>` : '<p class="empty">特になし</p>';
@@ -421,15 +470,18 @@ async function downloadCsv(i) {
 }
 
 // ---------- 過去の判定 ----------
+let histSpan = 'all';
 function renderHistory() {
   $('histnote').textContent = HIST.note;
   const qs = IND.questions;
-  const months = HIST.months;
+  const off = histSpan === '24' ? Math.max(0, HIST.months.length - 24) : 0;
+  const months = HIST.months.slice(off);
   const N = months.length;
+  const sl = (str) => str.slice(off);
   const labelW = 96, rowH = 22, gap = 4;
   const W = Math.max(720, $('history').clientWidth - 20);
   const cw = (W - labelW) / N;
-  const rows = [{ name: '景気後退(NBER)', s: HIST.usrec, rec: true }, ...qs.map((q) => ({ name: q.name, s: HIST.states[q.id] }))];
+  const rows = [{ name: '景気後退(NBER)', s: sl(HIST.usrec), rec: true }, ...qs.map((q) => ({ name: q.name, s: sl(HIST.states[q.id]) }))];
   const H = rows.length * (rowH + gap) + 24;
   let svg = `<svg id="histsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="過去の判定の推移">`;
   rows.forEach((r, ri) => {
@@ -448,24 +500,30 @@ function renderHistory() {
   const axisY = rows.length * (rowH + gap) + 12;
   months.forEach((m, k) => {
     const [yy, mm] = m.split('-').map(Number);
-    if (mm === 1 && yy % 4 === 0) {
+    const show = histSpan === '24' ? (mm % 3 === 1) : (mm === 1 && yy % 4 === 0);
+    if (show) {
       const x = labelW + k * cw;
-      svg += `<line x1="${x}" x2="${x}" y1="0" y2="${axisY - 10}" stroke="#ffffff" stroke-width="1" opacity=".7"/><text x="${x}" y="${axisY + 6}" font-size="11" fill="#3b4148" text-anchor="middle">${yy}</text>`;
+      const lab = histSpan === '24' ? `${String(yy).slice(2)}/${mm}` : yy;
+      svg += `<line x1="${x}" x2="${x}" y1="0" y2="${axisY - 10}" stroke="#ffffff" stroke-width="1" opacity=".7"/><text x="${x}" y="${axisY + 6}" font-size="11" fill="#3b4148" text-anchor="${histSpan === '24' ? 'start' : 'middle'}">${lab}</text>`;
     }
   });
   svg += `<rect id="histhit" x="${labelW}" y="0" width="${W - labelW}" height="${axisY}" fill="transparent"/></svg>`;
-  $('history').innerHTML = `<div class="hist">${svg}</div>
+  const spanBtns = `<div class="range" role="radiogroup" aria-label="表示期間" style="margin-bottom:8px"><span class="range-label">表示期間</span>
+    <button class="rbtn hspan" data-hs="all" role="radio" aria-checked="${histSpan === 'all'}">全期間（1988年〜）</button>
+    <button class="rbtn hspan" data-hs="24" role="radio" aria-checked="${histSpan === '24'}">直近24か月</button></div>`;
+  $('history').innerHTML = spanBtns + `<div class="hist">${svg}</div>
     <div class="legend">${['good', 'caution', 'warn', 'na'].map((k) => `<span><i class="sw" style="background:${ST[k].color}"></i>${ST[k].icon} ${ST[k].label}</span>`).join('')}<span><i class="sw" style="background:#3b4148"></i>景気後退期</span></div>`;
 
   const hit = $('histhit'), tip = $('tip');
   hit.addEventListener('mousemove', (e) => {
     const r = hit.getBoundingClientRect();
     const k = Math.min(N - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * N)));
-    const lines = qs.map((q) => `${q.name}：${ST[CODE[HIST.states[q.id][k]]].label}`);
-    tip.innerHTML = `<b>${months[k]}</b>${HIST.usrec[k] === '1' ? '（景気後退期）' : ''}<br>${lines.join('<br>')}`;
+    const lines = qs.map((q) => `${q.name}：${ST[CODE[HIST.states[q.id][k + off]]].label}`);
+    tip.innerHTML = `<b>${months[k]}</b>${HIST.usrec[k + off] === '1' ? '（景気後退期）' : ''}<br>${lines.join('<br>')}`;
     tip.hidden = false; tip.style.left = Math.min(e.clientX + 12, window.innerWidth - 270) + 'px'; tip.style.top = (e.clientY + 12) + 'px';
   });
   hit.addEventListener('mouseleave', () => { tip.hidden = true; });
+  document.querySelectorAll('.hspan').forEach((b) => b.addEventListener('click', () => { histSpan = b.dataset.hs; renderHistory(); }));
 
   // 景気後退の前に警戒が出ていたか
   const head = `<tr><th>景気後退の開始</th>${qs.map((q) => `<th>${esc(q.name)}</th>`).join('')}</tr>`;
@@ -484,6 +542,18 @@ function renderHistory() {
 }
 
 document.querySelectorAll('.rbtn[data-range]').forEach((b) => b.addEventListener('click', () => { range = b.dataset.range; renderGroups(); }));
+
+function renderRuleCompare() {
+  const rc = HIST.rule_compare;
+  if (!rc) return;
+  const used = HIST.jobs_rule;
+  const rows = Object.entries(rc).map(([k, v]) => `<tr${k === used ? ' class="used"' : ''}><td><b>${esc(k)}</b>${k === used ? '（採用中）' : ''}</td>
+    <td>${v.warned_before} / ${v.leads.length}回</td><td>${v.precision.rate === null ? '—' : v.precision.rate + '%'}<br><small>警戒${v.precision.warn_months}か月中</small></td>
+    <td style="text-align:left">${esc(v.text)}</td></tr>`).join('');
+  $('rulecmp').innerHTML = `<h3>雇用の判定ルールの比較</h3><div class="tscroll"><table class="t">
+    <tr><th>ルール</th><th>景気後退の前に警戒</th><th>当たり率</th><th>内容</th></tr>${rows}</table></div>
+    <p class="note">同じ過去データで各ルールを判定した結果。どのルールを使うかは設定ファイルで切り替えられる。過去に合わせすぎると将来に通用しないため、経済的に理由が説明できるルールだけを候補にしている。</p>`;
+}
 
 // ---------- AIに渡す ----------
 async function copyText(text) {
