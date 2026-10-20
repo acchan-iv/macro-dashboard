@@ -177,6 +177,7 @@ async function fcInit() {
 }
 
 async function fcUnlock(pw, silent) {
+  pw = String(pw || '').trim().toLowerCase(); // 大文字・小文字は区別しない
   FCS.busy = true; FCS.err = '';
   try {
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);

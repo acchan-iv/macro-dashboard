@@ -125,6 +125,11 @@ def decrypt_blob(blob: dict, private_key) -> dict:
     return json.loads(AESGCM(key).decrypt(base64.b64decode(blob["iv"]), base64.b64decode(blob["ct"]), None))
 
 
+def norm_pw(password: str) -> str:
+    """大文字・小文字を区別しない（前後の空白も無視）。ブラウザ側も同じ処理をする"""
+    return password.strip().lower()
+
+
 def load_private_key(key_file: Path, password: str):
     """テスト用：パスワードで秘密鍵を取り出す（ブラウザと同じ手順）"""
     import hashlib
@@ -133,7 +138,7 @@ def load_private_key(key_file: Path, password: str):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     k = json.loads(key_file.read_text(encoding="utf-8"))
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), base64.b64decode(k["kdf"]["salt"]), k["kdf"]["iter"], 32)
+    dk = hashlib.pbkdf2_hmac("sha256", norm_pw(password).encode("utf-8"), base64.b64decode(k["kdf"]["salt"]), k["kdf"]["iter"], 32)
     der = AESGCM(dk).decrypt(base64.b64decode(k["iv"]), base64.b64decode(k["ct"]), None)
     return serialization.load_der_private_key(der, password=None)
 

@@ -49,6 +49,7 @@ with tempfile.TemporaryDirectory() as d:
     check("暗号文に予想値が見えない", "0.6" not in json.dumps(blob))
     pk = fc.load_private_key(kf, "test-password-1234")
     check("正しいパスワードで復号できる", fc.decrypt_blob(blob, pk)["items"] == items)
+    check("大文字・小文字を区別しない", fc.decrypt_blob(blob, fc.load_private_key(kf, " TEST-Password-1234 "))["items"] == items)
     try:
         fc.load_private_key(kf, "wrong-password-1234")
         check("違うパスワードは拒否", False)

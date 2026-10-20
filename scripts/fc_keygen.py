@@ -8,7 +8,7 @@
 作るもの：
   config/fc_public.pem … 公開鍵（GitHub側が暗号化に使う。見られても問題ない）
   docs/fc_key.json     … パスワードで暗号化した秘密鍵（パスワードがないと使えない）
-パスワードそのものはどこにも保存しない。
+パスワードそのものはどこにも保存しない。大文字・小文字は区別しない（小文字にそろえてから使う）。
 """
 import argparse
 import base64
@@ -34,7 +34,7 @@ def wrap(private_key, password: str) -> dict:
     der = private_key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8,
                                     serialization.NoEncryption())
     salt, iv = os.urandom(16), os.urandom(12)
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, ITER, 32)
+    dk = hashlib.pbkdf2_hmac("sha256", forecast.norm_pw(password).encode("utf-8"), salt, ITER, 32)
     return {"v": 1, "kdf": {"name": "PBKDF2", "hash": "SHA-256", "iter": ITER, "salt": base64.b64encode(salt).decode()},
             "iv": base64.b64encode(iv).decode(), "ct": base64.b64encode(AESGCM(dk).encrypt(iv, der, None)).decode()}
 
@@ -44,9 +44,11 @@ def main() -> int:
     ap.add_argument("--change", action="store_true", help="鍵はそのままでパスワードだけ変える（貯めた予想も読める）")
     a = ap.parse_args()
     pw = os.environ.get("FC_PASSWORD", "")
-    if len(pw) < 12:
-        print("FC_PASSWORD（12文字以上）を指定してください", file=sys.stderr)
+    if not pw.strip():
+        print("FC_PASSWORD を指定してください", file=sys.stderr)
         return 1
+    if len(pw.strip()) < 12:
+        print("注意：短いパスワードは総当たりで破られやすい（暗号化した鍵は公開されているため）", file=sys.stderr)
     if a.change:
         key = forecast.load_private_key(KEY_FILE, os.environ["FC_PASSWORD_OLD"])
     else:
