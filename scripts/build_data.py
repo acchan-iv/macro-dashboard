@@ -41,6 +41,9 @@ MA_WINDOW = {"M": 3, "W": 4}
 TREND_WINDOW = {"Q": 2, "M": 3, "W": 4, "D": 21}
 CHANGE_LAG = {"Q": 1, "M": 1, "W": 1, "D": 5}
 TIER_ORDER = {"S": 0, "A": 1, "B": 2, "C": 3}
+LINE_BASIS = {"yoy_pct": "前年比", "mom_pct": "前月比", "diff": "前月差", "none": ""}
+LINE_ORDER = {"前年比": 0, "前期比年率": 1, "": 2, "前月差": 3, "前月比": 4, "件数（年率）": 5}
+BASIS_SUFFIX = __import__("re").compile(r"（(前年比|前月比|前月差)）$")
 STATE_LABEL = {"good": "良好", "caution": "注意", "warn": "警戒", "na": "データ不足"}
 
 
@@ -142,18 +145,48 @@ def _obs_to_series(obs: list[dict]) -> pd.Series:
 # ----------------------------------------------------------------------------
 # 変換・指標ごとの計算
 # ----------------------------------------------------------------------------
+STEP = {"M": pd.DateOffset(months=1), "Q": pd.DateOffset(months=3), "W": pd.Timedelta(weeks=1)}
+
+
+def lag_by(s: pd.Series, k: int, freq: str) -> pd.Series:
+    """k期前の値（日付で合わせる）。
+    データ数で数えると、欠けた月（例：2025年10月のCPIは政府閉鎖で未発表）があった時に13か月前と比べてしまうため、
+    月次・四半期・週次は「日付で1期前」をたどる。前の期の値がなければ NaN。日次は営業日の数で数える"""
+    if freq not in STEP or len(s) == 0:
+        return s.shift(k)
+    moved = s.copy()
+    moved.index = moved.index + STEP[freq] * k
+    moved = moved[~moved.index.duplicated(keep="last")]
+    return moved.reindex(s.index)
+
+
+def yoy_base(s: pd.Series, n: int, freq: str) -> tuple[pd.Series, pd.Series]:
+    """前年比の基準（1年前の値）。1年前の月だけが欠けている時は前後の月の幾何平均で補う（推定）。
+    例：2026年10月のCPI前年比は、2025年10月が未発表のため9月と11月から推定する。
+    戻り値：(基準値, 推定かどうか)"""
+    base = lag_by(s, n, freq)
+    est = pd.Series(False, index=s.index)
+    if freq == "M":
+        a, b = lag_by(s, n + 1, freq), lag_by(s, n - 1, freq)
+        fill = base.isna() & a.notna() & b.notna() & s.notna()
+        base = base.where(~fill, (a * b) ** 0.5)
+        est = fill
+    return base, est
+
+
 def transform(raw: pd.Series, ind: dict) -> pd.Series:
     s = raw * ind.get("scale", 1.0)
     t = ind["transform"]
+    fq = ind["freq"]
     if t == "none":
         out = s
     elif t == "diff":
-        out = s.diff()
+        out = s - lag_by(s, 1, fq)
     elif t == "mom_pct":
-        out = s.pct_change(fill_method=None) * 100
+        out = (s / lag_by(s, 1, fq) - 1) * 100
     elif t == "yoy_pct":
-        n = PERIODS_PER_YEAR[ind["freq"]]
-        out = (s / s.shift(n) - 1) * 100
+        base, _ = yoy_base(s, PERIODS_PER_YEAR[fq], fq)
+        out = (s / base - 1) * 100
     else:
         raise ValueError(f"unknown transform {t}")
     return out.replace([math.inf, -math.inf], math.nan)
@@ -196,12 +229,13 @@ def f(x, nd=4):
 def value_year_ago(v: pd.Series, freq: str) -> float | None:
     if len(v) == 0:
         return None
-    if freq in PERIODS_PER_YEAR:
-        n = PERIODS_PER_YEAR[freq]
-        return float(v.iloc[-1 - n]) if len(v) > n else None
+    # 日付で1年前（欠けた月があってもずれない）。ちょうどの日がなければ直前の値（離れすぎなら無し）
     target = v.index[-1] - pd.DateOffset(years=1)
     prev = v[v.index <= target]
-    return float(prev.iloc[-1]) if len(prev) else None
+    if not len(prev):
+        return None
+    tol = {"M": 20, "Q": 45, "W": 7}.get(freq, 7)
+    return float(prev.iloc[-1]) if (target - prev.index[-1]).days <= tol else None
 
 
 def trend_info(v: pd.Series, ind: dict) -> dict:
@@ -262,7 +296,7 @@ def indicator_metrics(ind: dict, raw: pd.Series, v: pd.Series, settings: dict, t
     ya = value_year_ago(vv, ind["freq"])
 
     k = CHANGE_LAG[ind["freq"]]
-    changes = vv.diff(k).dropna()
+    changes = (vv - lag_by(vv, k, ind["freq"])).dropna()
     hist = changes[changes.index >= changes.index[-1] - pd.DateOffset(years=20)] if len(changes) else changes
     z = None
     if len(hist) > 30 and hist.std() > 0:
@@ -864,6 +898,10 @@ def main() -> int:
 
         m = indicator_metrics(ind, raw, v, settings, today)
         m["source"] = source
+        m["latest_est"] = False
+        if m.get("ok") and ind["transform"] == "yoy_pct":
+            _, est = yoy_base(raw * ind.get("scale", 1.0), PERIODS_PER_YEAR[ind["freq"]], ind["freq"])
+            m["latest_est"] = bool(est.get(pd.Timestamp(m["latest_date"]), False))
         rd = [] if ind["freq"] == "D" or ind.get("derived") else fred.release_dates(ind["fred"], today)
         nxt = [d for d in rd if d >= today.isoformat()]
         past = [d for d in rd if (today - dt.timedelta(days=8)).isoformat() <= d < today.isoformat()]
@@ -951,7 +989,8 @@ def main() -> int:
     recent = [
         {"date": i["last_release"], "id": i["id"], "name": i["name"], "tier": i.get("tier"), "latest": i["latest"],
          "latest_date": i["latest_date"], "prev": i["prev"], "change": i["change"], "unit": i["unit"],
-         "decimals": i["decimals"], "direction": i["direction"], "freq": i["freq"], "big_move": i["big_move"]}
+         "decimals": i["decimals"], "direction": i["direction"], "freq": i["freq"], "big_move": i["big_move"],
+         "latest_est": i.get("latest_est", False)}
         for i in ind_out if i.get("ok") and i.get("last_release")
     ]
     recent.sort(key=lambda x: (x["date"], -TIER_ORDER.get(x["tier"], 9)), reverse=True)
@@ -987,28 +1026,47 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001
                 if not args.offline:
                     fred.warnings.append(f"予想比較用データの取得に失敗: {sid} ({str(e)[:80]})")
+    # 表の行：基準（前年比・前月比など）ごとに「前回・結果」を同じ基準・公式発表と同じ桁でそろえる。
+    # 市場予想がある基準は、予想と同じ計算方法で出す（予想値そのものはここに入れない＝公開データだけ）
+    ind_by_id2 = {i["id"]: i for i in cfg["indicators"]}
     for x in recent:
+        ind = ind_by_id2[x["id"]]
+        x["base_name"] = BASIS_SUFFIX.sub("", x["name"])
+        disp_label = LINE_BASIS.get(ind["transform"], "")
+        disp_dec = 1 if x["unit"] == "%" else x["decimals"]
         ld = pd.Timestamp(x["latest_date"])
+        lines = []
         for title, (iid, how) in forecast.TITLE_SPEC.items():
             if iid != x["id"]:
                 continue
             unit, dec = forecast.spec_unit(title, x["unit"])
-            val = None
+            ln = {"key": title, "b": forecast.basis_label(title) or disp_label, "u": unit, "d": dec, "disp": how == "disp",
+                  "est": False}
             if how == "disp":
-                val = x["latest"]
+                ln.update(v=x["latest"], prev=x["prev"], d=disp_dec if unit == "%" else dec, est=x.get("latest_est", False))
             else:
                 raw = fred_raw.get(how[0])
                 if raw is None or ld not in raw.index:
                     continue
                 if how[1] == "mom":
-                    val = float((raw.pct_change(fill_method=None) * 100)[ld])
+                    ser = (raw / lag_by(raw, 1, "M") - 1) * 100
                 elif how[1] == "yoy":
-                    val = float(((raw / raw.shift(12) - 1) * 100)[ld])
-                elif how[1] == "level":
-                    val = float(raw[ld] * how[2])
-            if val is None or (isinstance(val, float) and math.isnan(val)):
+                    base, est = yoy_base(raw, 12, "M")
+                    ser = (raw / base - 1) * 100
+                    ln["est"] = bool(est.get(ld, False))
+                else:
+                    ser = raw * how[2]
+                    ln["b"] = "件数（年率）"
+                pv = ser.get(ld - STEP["M"])
+                ln.update(v=f(ser.get(ld)), prev=f(pv) if pv is not None and not math.isnan(pv) else None)
+            if ln.get("v") is None:
                 continue
-            x.setdefault("cmp", {})[title] = {"v": f(val), "u": unit, "d": dec, "b": forecast.basis_label(title)}
+            lines.append(ln)
+        if not any(l["disp"] or l["b"] == disp_label for l in lines):
+            lines.append({"key": "disp", "b": disp_label, "u": x["unit"], "d": disp_dec, "disp": True,
+                          "v": x["latest"], "prev": x["prev"], "est": x.get("latest_est", False)})
+        lines.sort(key=lambda l: LINE_ORDER.get(l["b"], 9))
+        x["lines"] = lines
 
     fc_info = forecast.build(OUT_DIR / "fc.json", today, {i["id"]: i.get("unit", "") for i in cfg["indicators"]},
                              os.environ.get("SITE_URL"), args.offline, fred.warnings)

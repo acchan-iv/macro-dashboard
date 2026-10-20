@@ -141,21 +141,6 @@ function renderRprob() {
   </div>`;
 }
 
-function revHtml(x) {
-  const r = x.revision;
-  if (!r || r.before === null || r.before === undefined) return '';
-  const d = x.decimals, u = x.unit;
-  if (r.type === 'same') {
-    if (Math.abs(r.after - r.before) < 1e-9) return `<span class="rrev">改定なし（前回発表時と同じ ${fmt(r.before, d)}${esc(u)}）</span>`;
-    const up = r.after > r.before;
-    return `<span class="rrev"><b>${up ? '上方' : '下方'}改定</b>：前回発表時 ${fmt(r.before, d)}${esc(u)} → 今回 ${fmt(r.after, d)}${esc(u)}</span>`;
-  }
-  if (r.type === 'prior' && Math.abs(r.after - r.before) >= 1e-9) {
-    return `<span class="rrev">前の期（${dateLabel(r.period, x.freq)}）も改定：${fmt(r.before, d)} → ${fmt(r.after, d)}${esc(u)}</span>`;
-  }
-  return '';
-}
-
 // ---------- 市場予想（パスワードを入れた端末だけ表示） ----------
 // 予想値は提供元の規約で再公開できないため、暗号化して置いている。パスワードはこのページにもGitHubにも保存していない。
 const FCS = { available: false, items: null, open: false, busy: false, err: '', src: [] };
@@ -220,30 +205,23 @@ function surpriseClass(dir, diff) {
   return 'flat';
 }
 
-function fcFor(x) {
-  if (!FCS.items || !x.cmp) return [];
-  const near = (a, b) => Math.abs(new Date(a) - new Date(b)) <= 86400000;
-  let hit = FCS.items.filter((it) => it.id === x.id && it.date === x.date && x.cmp[it.title]);
-  if (!hit.length) hit = FCS.items.filter((it) => it.id === x.id && near(it.date, x.date) && x.cmp[it.title]);
-  const seen = new Set();
-  return hit.filter((it) => !seen.has(it.title) && seen.add(it.title))
-    .sort((a, b) => (a.title.endsWith('y/y') ? -1 : 0) - (b.title.endsWith('y/y') ? -1 : 0)).slice(0, 2);
+// この発表・この基準の予想（発表日が同じものを優先、なければ前後1日）
+function fcLookup(x, key) {
+  if (!FCS.items || !key || key === 'disp') return null;
+  const same = FCS.items.find((it) => it.id === x.id && it.title === key && it.date === x.date);
+  if (same) return same;
+  return FCS.items.find((it) => it.id === x.id && it.title === key && Math.abs(new Date(it.date) - new Date(x.date)) <= 86400000) || null;
 }
 
-function fcCell(x) {
-  const hits = fcFor(x);
-  if (!hits.length) return '<span class="rfc"><span class="fcnone">予想なし</span></span>';
-  const lines = hits.map((it) => {
-    const c = x.cmp[it.title], d = c.d, u = c.u;
-    const cu = u === '%' ? 'pt' : u;
-    const diff = Number(c.v.toFixed(d)) - Number(it.fc.toFixed(d));
-    const cls = surpriseClass(x.direction, diff);
-    const word = Math.abs(diff) < 1e-9 ? '予想どおり' : diff > 0 ? '予想より上' : '予想より下';
-    return `<span class="fcline">${c.b ? `<small>${esc(c.b)}</small>` : ''}予想 <b>${fmt(it.fc, d)}${esc(u)}</b> → 結果 <b>${fmt(c.v, d)}${esc(u)}</b>
-      <span class="${cls} fcdiff">${word}${Math.abs(diff) < 1e-9 ? '' : `（${fmtSigned(diff, d)}${esc(cu)}）`}</span></span>`;
-  });
-  return `<span class="rfc">${lines.join('')}</span>`;
+// 前回との差の色：物価の前年比は2%に近づけば緑、物価のそれ以外（前月比など）は低いほど緑
+function lineChangeClass(dir, basis, prev, v) {
+  const diff = v - prev;
+  if (Math.abs(diff) < 1e-9) return 'flat';
+  if (dir === 'target' && basis === '前年比') return Math.abs(v - 2) < Math.abs(prev - 2) ? 'up-good' : 'down-bad';
+  return surpriseClass(dir, diff);
 }
+
+const rnd = (v, d) => Number(Number(v).toFixed(d));
 
 function fcControl() {
   if (!FCS.available) return '';
@@ -288,27 +266,53 @@ function renderRecent() {
     $('recent').innerHTML = toggle + `<p class="empty">${all.length ? 'この範囲に該当する発表はありません。' : '直近1週間に発表された指標はありません。'}</p>`;
     bindToggle(); return;
   }
-  const byId = Object.fromEntries(IND.indicators.map((i) => [i.id, i]));
-  const rows = r.map((x) => {
-    const i = byId[x.id] || x;
-    const cu = x.unit === '%' ? 'pt' : x.unit;
-    return `<div class="rrow" role="button" tabindex="0" data-id="${x.id}">
-      <span class="rdate">${mdw(x.date)}</span>
-      <span class="rname">${tierChip(x.tier)}${esc(x.name)}${x.big_move ? '<span class="big">大きな変化</span>' : ''}</span>
-      <span class="rval"><b>${fmt(x.latest, x.decimals)}</b>${esc(x.unit)}<small>${dateLabel(x.latest_date, x.freq)}分</small></span>
-      <span class="rprev">前の期 ${fmt(x.prev, x.decimals)}${esc(x.unit)}</span>
-      <span class="rchg ${changeClass(i, x.prev, x.latest)}">${arrow(x.change)} ${fmtSigned(x.change, x.decimals)}${esc(cu)}</span>
-      ${showFc ? fcCell(x) : ''}
-      ${revHtml(x)}
-    </div>`;
+  const head = `<thead><tr><th class="c-date">日付</th><th class="c-name">指標</th><th class="c-prev">前回</th>${showFc ? '<th class="c-fc">予想</th>' : ''}<th class="c-res">結果</th><th class="c-diff">${showFc ? '予想との差' : '前回との差'}</th></tr></thead>`;
+  const body = r.map((x) => {
+    const lines = (x.lines && x.lines.length) ? x.lines
+      : [{ key: 'disp', b: '', u: x.unit, d: x.decimals, disp: true, v: x.latest, prev: x.prev, est: x.latest_est }];
+    return lines.map((ln, k) => {
+      const d = ln.d, u = esc(ln.u), cu = esc(ln.u === '%' ? 'pt' : ln.u);
+      const v = ln.v, pv = ln.prev;
+      // 改定（前の期が修正された／同じ期の数字が修正された）は、画面の基準の行にだけ出す
+      let rev = '';
+      const rv = x.revision;
+      if (ln.disp && rv && rv.before !== null && rv.before !== undefined && Math.abs(rv.after - rv.before) >= 1e-9) {
+        rev = rv.type === 'prior' ? `<small class="rrev2">改定前 ${fmt(rv.before, d)}${u}</small>` : '';
+      }
+      const sameRev = (ln.disp && rv && rv.type === 'same' && rv.before !== null && Math.abs(rv.after - rv.before) >= 1e-9)
+        ? `<small class="rrev2">前回発表時 ${fmt(rv.before, d)}${u}</small>` : '';
+      let fcTd = '', diffTd;
+      if (showFc) {
+        const fc = fcLookup(x, ln.key);
+        fcTd = `<td class="c-fc" data-l="予想">${fc ? `${fmt(fc.fc, d)}${u}` : '<span class="na">—</span>'}</td>`;
+        if (fc && v !== null) {
+          const diff = rnd(v, d) - rnd(fc.fc, d);
+          const zero = Math.abs(diff) < 1e-9;
+          diffTd = `<td class="c-diff ${surpriseClass(x.direction, diff)}">${zero ? '予想どおり' : `${fmtSigned(diff, d)}${cu} ${diff > 0 ? '上振れ' : '下振れ'}`}</td>`;
+        } else diffTd = '<td class="c-diff empty"><span class="na">—</span></td>';
+      } else if (pv !== null && pv !== undefined && v !== null) {
+        const diff = rnd(v, d) - rnd(pv, d);
+        diffTd = `<td class="c-diff ${lineChangeClass(x.direction, ln.b, rnd(pv, d), rnd(v, d))}">${Math.abs(diff) < 1e-9 ? '変わらず' : `${arrow(diff)} ${fmtSigned(diff, d)}${cu}`}</td>`;
+      } else diffTd = '<td class="c-diff empty"><span class="na">—</span></td>';
+      const first = k === 0;
+      const nameTd = first
+        ? `<td class="c-name">${tierChip(x.tier)}<b class="iname">${esc(x.base_name || x.name)}</b>${ln.b ? `<span class="basis">${esc(ln.b)}</span>` : ''}${x.big_move ? '<span class="big">大きな変化</span>' : ''}<small class="per">${dateLabel(x.latest_date, x.freq)}分</small></td>`
+        : `<td class="c-name sub"><span class="basis">${esc(ln.b)}</span></td>`;
+      return `<tr class="rline${first ? ' first' : ''}" tabindex="0" data-id="${x.id}">
+        <td class="c-date">${first ? mdw(x.date) : ''}</td>${nameTd}
+        <td class="c-prev" data-l="前回">${pv === null || pv === undefined ? '<span class="na">—</span>' : `${fmt(pv, d)}${u}`}${rev}</td>
+        ${fcTd}<td class="c-res" data-l="結果"><b>${v === null ? '—' : fmt(v, d)}</b>${v === null ? '' : u}${ln.est ? '<small class="est">推定</small>' : ''}${sameRev}</td>
+        ${diffTd}</tr>`;
+    }).join('');
   }).join('');
   const fcNote = showFc
-    ? `<p class="note"><b>予想</b>：市場予想（${esc(FCS.src.join('・') || 'Forex Factory')}）。比べる「結果」は予想と同じ基準（前月比・前年比など）でFREDの数値から計算しているため、上の数字と違うことがあります（例：CPIの前年比は公式発表と同じ季節調整なしの系列）。公式発表の丸めと0.1程度ずれることがあります。色は景気にとって良い外れ方なら緑（物価は予想より低いと緑）。予想は2026年10月12日の週から記録しています。</p>`
+    ? `<p class="note"><b>予想</b>：市場予想（${esc(FCS.src.join('・') || 'Forex Factory')}）。予想は2026年10月12日の週から記録しています。「—」は予想のない基準です。結果は予想と同じ基準でFREDの数値から計算しています（CPI・コアCPIの前年比は公式発表と同じ季節調整なしの系列）。</p>`
     : (FCS.available ? '<p class="note">市場予想との比較は、パスワードを入力した端末だけに表示されます。</p>' : '');
-  $('recent').innerHTML = toggle + `<div class="rlist${showFc ? ' has-fc' : ''}">${rows}</div>
-    <p class="note">日付は米国の発表日。「変化」は前の期との差。色は景気・物価にとって良い方向なら緑、悪い方向なら赤（金利など方向で良し悪しを決めない指標は黒）。「改定」は同じ期の数字が前回発表時から修正されたもの。</p>${fcNote}`;
+  $('recent').innerHTML = toggle + `<p class="legend">色の見方：<span class="up-good">緑</span>＝景気・物価にとって良い、<span class="down-bad">赤</span>＝悪い（物価は低いほど緑）。株価の反応とは逆になることがあります。</p>
+    <div class="rwrap"><table class="rtable${showFc ? ' has-fc' : ''}">${head}<tbody>${body}</tbody></table></div>
+    <p class="note">日付は米国の発表日。数値は公式発表と同じ桁に丸めています（細かい桁は行を押すと出る詳細画面）。「改定前」は前回の数字が今回の発表で修正されたときの修正前の値。「推定」は1年前の月が未発表（2025年10月の政府閉鎖）のため前後の月から推定した前年比。黒は良し悪しを決めない指標。</p>${fcNote}`;
   bindToggle();
-  document.querySelectorAll('.rrow').forEach((el) => {
+  document.querySelectorAll('.rline').forEach((el) => {
     el.addEventListener('click', () => openModal(el.dataset.id));
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') openModal(el.dataset.id); });
   });

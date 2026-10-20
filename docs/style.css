@@ -153,28 +153,46 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
 .aibox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; padding: 10px 12px; border: 2px solid #111418; border-radius: 10px; }
 .aibox .btn { font-weight: 700; }
 
-/* 最近の発表結果 */
-.rlist { border: 1px solid var(--line); border-radius: 8px; }
-.rrow { display: grid; grid-template-columns: 96px minmax(220px, 1.6fr) 1fr 1fr 1fr; gap: 8px; align-items: baseline; padding: 8px 12px; border-top: 1px solid var(--line); cursor: pointer; }
-.rrow:first-child { border-top: 0; }
-.rrow:hover, .rrow:focus-visible { background: #f3f4f6; outline: none; }
-.rdate { font-weight: 700; }
-.rval b { font-size: 18px; }
-.rval small { color: var(--text-2); margin-left: 6px; font-size: 12px; }
-.rprev { color: var(--text-2); }
-.rchg { font-weight: 700; }
-.rval, .rprev, .rchg { white-space: nowrap; }
+/* 最近の発表結果（表） */
+.legend { margin: 0 0 8px; font-size: 14px; }
+.rwrap { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.rtable { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.rtable th { text-align: left; font-size: 13px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid var(--text); background: #f6f7f8; white-space: nowrap; }
+.rtable td { padding: 6px 10px; vertical-align: baseline; }
+.rtable .c-prev, .rtable .c-fc, .rtable .c-res, .rtable .c-diff { text-align: right; white-space: nowrap; }
+.rtable th.c-prev, .rtable th.c-fc, .rtable th.c-res, .rtable th.c-diff { text-align: right; }
+.rtable tr.first td { border-top: 1px solid #9aa0a6; padding-top: 10px; }
+.rtable tbody tr.first:first-child td { border-top: 0; }
+.rtable tr.rline { cursor: pointer; }
+.rtable tr.rline:hover td, .rtable tr.rline:focus-visible td { background: #f3f4f6; outline: none; }
+.rtable .c-date { font-weight: 700; white-space: nowrap; width: 92px; }
+.rtable .c-res b { font-size: 17px; }
+.rtable .c-diff { font-weight: 700; }
+.rtable .iname { font-weight: 700; margin-right: 6px; }
+.rtable .basis { display: inline-block; font-size: 13px; font-weight: 700; padding: 0 6px; border: 1px solid #5b6168; border-radius: 4px; margin-right: 6px; }
+.rtable .c-name.sub { padding-left: 28px; }
+.rtable .per { display: block; color: var(--text-2); font-size: 12px; margin-top: 2px; }
+.rtable small.rrev2, .rtable small.est { display: block; font-size: 12px; color: var(--text); font-weight: 400; }
+.rtable small.est { font-weight: 700; }
+.rtable .na { color: var(--text-2); }
 @media (max-width: 720px) {
-  /* 1段目：日付＋指標名／2段目：結果と変化／3段目：前回とデータの月 */
-  .rrow { grid-template-columns: 1fr auto; row-gap: 2px; }
-  .rdate { grid-column: 1 / -1; }
-  .rname { grid-column: 1 / -1; }
-  .rdate { grid-row: 1; }
-  .rname { grid-row: 2; }
-  .rval { grid-column: 1 / 2; grid-row: 3; }
-  .rchg { grid-column: 2 / 3; grid-row: 3; text-align: right; }
-  .rprev { grid-column: 1 / -1; grid-row: 4; font-size: 13px; }
-  .rval small { margin-left: 6px; }
+  /* スマホ：1つの基準＝1段。上に指標名、下に「前回／予想／結果」を横並び、最後に差 */
+  .rtable thead { display: none; }
+  .rtable, .rtable tbody { display: block; }
+  .rtable tr.rline { display: grid; grid-template-columns: repeat(2, 1fr); column-gap: 8px; padding: 6px 12px; }
+  .rtable.has-fc tr.rline { grid-template-columns: repeat(3, 1fr); }
+  .rtable tr.first { border-top: 1px solid #9aa0a6; padding-top: 10px; }
+  .rtable tbody tr.first:first-child { border-top: 0; }
+  .rtable tr.first td { border-top: 0; padding-top: 0; }
+  .rtable td { padding: 0; }
+  .rtable .c-date, .rtable .c-name, .rtable .c-diff { grid-column: 1 / -1; text-align: left; }
+  .rtable tr:not(.first) .c-date { display: none; }
+  .rtable .c-name.sub { padding-left: 0; margin-top: 4px; }
+  .rtable .c-prev, .rtable .c-fc, .rtable .c-res { text-align: left; }
+  .rtable td[data-l]::before { content: attr(data-l); display: block; font-size: 12px; color: var(--text-2); font-weight: 700; }
+  .rtable .c-diff { margin-top: 2px; }
+  .rtable .c-diff.empty { display: none; }
+  .rtable .per { display: inline; margin-left: 6px; }
 }
 .chg { row-gap: 2px; }
 
@@ -214,8 +232,6 @@ section[id] { scroll-margin-top: 56px; }
 .rprob details { flex-basis: 100%; }
 
 /* 改定表示 */
-.rrev { grid-column: 2 / -1; font-size: 13px; color: var(--text); }
-@media (max-width: 720px) { .rrev { grid-column: 1 / -1; grid-row: 5; } }
 table.t tr.used td { background: #eef6ee; }
 
 /* 市場予想（パスワードを入れた端末だけ） */
@@ -223,15 +239,7 @@ table.t tr.used td { background: #eef6ee; }
 .fcform { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .fcform input { font: inherit; padding: 4px 8px; border: 1px solid #5b6168; border-radius: 6px; width: 200px; color: var(--text); background: #fff; }
 .fcerr { color: #b42318; font-weight: 700; }
-.rlist.has-fc .rrow { grid-template-columns: 96px minmax(200px, 1.3fr) 1fr 1fr 0.9fr 1.7fr; }
-.rfc { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
-.fcline small { display: inline-block; min-width: 3.5em; margin-right: 4px; color: var(--text); font-weight: 700; font-size: 12px; }
-.fcdiff { font-weight: 700; margin-left: 4px; white-space: nowrap; }
-.fcnone { color: var(--text-2); font-size: 13px; }
 @media (max-width: 720px) {
   .fcctl { margin: 0 0 8px; display: flex; }
   .fcform input { width: 160px; }
-  .rlist.has-fc .rrow { grid-template-columns: 1fr auto; }
-  .rfc { grid-column: 1 / -1; grid-row: 5; padding: 4px 0; border-top: 1px dashed var(--line); }
-  .rlist.has-fc .rrev { grid-row: 6; }
-}
+  }
