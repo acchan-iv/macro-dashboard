@@ -66,6 +66,14 @@ mainに修正を反映した時も、その場で作り直す。
 - 雇用の判定ルールの候補比較（`config/indicators.json` の jobs → params → rule で切り替え：v1／v2／v2b／v2c）
 - 過去の判定の「直近24か月」表示、ページ上部の目次
 
+## 前年比・前月比の計算（2026-10-21 修正）
+
+前年比・前月比・前月差は「データの個数」ではなく「日付」で1年前・1か月前と比べる。
+FREDには未発表の月が空欄で入ることがある（2025年10月のCPIなど：政府閉鎖）。以前は個数で数えていたため、
+その後の前年比が13か月前と比べた値になっていた（CPI 2026年9月：誤 4.02% → 正 3.72%）。
+1年前の月だけが欠けている時（2026年10月のCPI前年比など）は、前後の月の幾何平均で補い「推定」と表示する。
+回帰テスト：`python tests/test_transform.py`
+
 ## 市場予想（パスワードを入れた端末だけ表示）
 
 「最近の発表結果」の「予想を表示（パスワード）」に入力すると、その端末だけに予想と結果の比較が出る（次回からは自動で表示。「予想を隠す」で端末から消える）。
@@ -109,6 +117,7 @@ mainに修正を反映した時も、その場で作り直す。
 pip install -r requirements.txt
 python tests/test_rules.py                         # 判定ルールのテスト（実データの値で検算）
 python tests/test_forecast.py                      # 予想の暗号化・単位変換のテスト
+python tests/test_transform.py                     # 前年比・前月比の計算（欠けた月があってもずれないか）
 python tests/make_fixtures.py tests/fixtures       # 偽データを作る
 python scripts/build_data.py --offline tests/fixtures
 cd docs && python -m http.server 8000              # http://localhost:8000 で確認（テストデータの表示が出る）
