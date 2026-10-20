@@ -27,6 +27,9 @@ from pathlib import Path
 import pandas as pd
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import forecast  # noqa: E402  市場予想（暗号化して保存）
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config" / "indicators.json"
 OUT_DIR = ROOT / "docs" / "data"
@@ -975,6 +978,41 @@ def main() -> int:
             x["revision"] = {"type": "prior", "period": pdx.strftime("%Y-%m-%d"),
                              "before": f(float(old[pdx])), "after": f(float(cur.iloc[-2]))}
 
+    # 市場予想と比べるための「結果」（予想と同じ基準で計算した公開データ。予想値そのものはここに入れない）
+    fred_raw = {ind["fred"]: raws[ind["id"]] for ind in cfg["indicators"] if not ind.get("derived") and ind["id"] in raws}
+    if recent:
+        for sid in forecast.EXTRA_SERIES:
+            try:
+                fred_raw[sid] = fred.observations(sid, (today - dt.timedelta(days=4 * 365)).isoformat())
+            except Exception as e:  # noqa: BLE001
+                if not args.offline:
+                    fred.warnings.append(f"予想比較用データの取得に失敗: {sid} ({str(e)[:80]})")
+    for x in recent:
+        ld = pd.Timestamp(x["latest_date"])
+        for title, (iid, how) in forecast.TITLE_SPEC.items():
+            if iid != x["id"]:
+                continue
+            unit, dec = forecast.spec_unit(title, x["unit"])
+            val = None
+            if how == "disp":
+                val = x["latest"]
+            else:
+                raw = fred_raw.get(how[0])
+                if raw is None or ld not in raw.index:
+                    continue
+                if how[1] == "mom":
+                    val = float((raw.pct_change(fill_method=None) * 100)[ld])
+                elif how[1] == "yoy":
+                    val = float(((raw / raw.shift(12) - 1) * 100)[ld])
+                elif how[1] == "level":
+                    val = float(raw[ld] * how[2])
+            if val is None or (isinstance(val, float) and math.isnan(val)):
+                continue
+            x.setdefault("cmp", {})[title] = {"v": f(val), "u": unit, "d": dec, "b": forecast.basis_label(title)}
+
+    fc_info = forecast.build(OUT_DIR / "fc.json", today, {i["id"]: i.get("unit", "") for i in cfg["indicators"]},
+                             os.environ.get("SITE_URL"), args.offline, fred.warnings)
+
     # 今日のまとめ（3〜4行）
     headline = []
     changed = [f"{q['name']} {STATE_LABEL[q['last_month_state']]}→{q['label']}" for q in q_out
@@ -1019,7 +1057,7 @@ def main() -> int:
         "questions": q_out,
         "cycle": cycle_now if settings.get("show_cycle") else None,
         "notable": notable, "stale": stale, "upcoming": upcoming, "recent": recent,
-        "headline": headline, "recession_prob": rprob,
+        "headline": headline, "recession_prob": rprob, "fc_info": fc_info,
         "failed": failed, "fallback_used": fallback_used, "warnings": fred.warnings,
         "handoff_text": "\n".join(lines),
     }

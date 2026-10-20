@@ -77,6 +77,7 @@ async function load() {
   $('title').textContent = IND.settings.site_title;
   IND.questions.forEach((q) => { QNAMES[q.id] = q.name; });
   renderHeader(); renderHeadline(); renderRecent(); renderQuestions(); renderRprob(); renderRuleCompare(); renderNotable(); renderCalendar(); renderChips(); renderGroups(); renderHistory();
+  fcInit();
 }
 
 function renderHeader() {
@@ -155,6 +156,122 @@ function revHtml(x) {
   return '';
 }
 
+// ---------- 市場予想（パスワードを入れた端末だけ表示） ----------
+// 予想値は提供元の規約で再公開できないため、暗号化して置いている。パスワードはこのページにもGitHubにも保存していない。
+const FCS = { available: false, items: null, open: false, busy: false, err: '', src: [] };
+const FC_STORE = 'umt-fcpass';
+const b64d = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+let FC_KEY = null, FC_DATA = null;
+
+async function fcInit() {
+  if (!(window.crypto && crypto.subtle)) return;
+  try {
+    const get = (p) => fetch(p, { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(p); return r.json(); });
+    [FC_KEY, FC_DATA] = await Promise.all([get('fc_key.json'), get('data/fc.json')]);
+    FCS.available = true;
+  } catch { return; }
+  let saved = null;
+  try { saved = localStorage.getItem(FC_STORE); } catch { saved = null; }
+  if (saved) await fcUnlock(saved, true);
+  renderRecent();
+}
+
+async function fcUnlock(pw, silent) {
+  FCS.busy = true; FCS.err = '';
+  try {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    const k = FC_KEY.kdf;
+    const aes = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64d(k.salt), iterations: k.iter },
+      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    const der = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(FC_KEY.iv) }, aes, b64d(FC_KEY.ct));
+    const priv = await crypto.subtle.importKey('pkcs8', der, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    const items = [], src = new Set();
+    for (const w of Object.values(FC_DATA.weeks || {})) {
+      try {
+        const raw = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, b64d(w.ek));
+        const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+        const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(w.iv) }, key, b64d(w.ct));
+        const obj = JSON.parse(new TextDecoder().decode(pt));
+        (obj.items || []).forEach((it) => items.push(it));
+        if (obj.src) src.add(obj.src);
+      } catch { /* 読めない週は飛ばす */ }
+    }
+    FCS.items = items; FCS.src = [...src]; FCS.open = false;
+    try { localStorage.setItem(FC_STORE, pw); } catch { /* 保存できない環境では毎回入力 */ }
+  } catch {
+    FCS.items = null;
+    if (silent) { try { localStorage.removeItem(FC_STORE); } catch { /* 無視 */ } } else FCS.err = 'パスワードが違います';
+  }
+  FCS.busy = false;
+}
+
+function fcLock() {
+  FCS.items = null; FCS.open = false;
+  try { localStorage.removeItem(FC_STORE); } catch { /* 無視 */ }
+  renderRecent();
+}
+
+// 予想が良い方向に外れたか（色分け用）：景気指標は上振れが良い、物価は下振れが良い
+function surpriseClass(dir, diff) {
+  if (Math.abs(diff) < 1e-9) return 'flat';
+  if (dir === 'up') return diff > 0 ? 'up-good' : 'down-bad';
+  if (dir === 'down' || dir === 'target') return diff < 0 ? 'up-good' : 'down-bad';
+  return 'flat';
+}
+
+function fcFor(x) {
+  if (!FCS.items || !x.cmp) return [];
+  const near = (a, b) => Math.abs(new Date(a) - new Date(b)) <= 86400000;
+  let hit = FCS.items.filter((it) => it.id === x.id && it.date === x.date && x.cmp[it.title]);
+  if (!hit.length) hit = FCS.items.filter((it) => it.id === x.id && near(it.date, x.date) && x.cmp[it.title]);
+  const seen = new Set();
+  return hit.filter((it) => !seen.has(it.title) && seen.add(it.title))
+    .sort((a, b) => (a.title.endsWith('y/y') ? -1 : 0) - (b.title.endsWith('y/y') ? -1 : 0)).slice(0, 2);
+}
+
+function fcCell(x) {
+  const hits = fcFor(x);
+  if (!hits.length) return '<span class="rfc"><span class="fcnone">予想なし</span></span>';
+  const lines = hits.map((it) => {
+    const c = x.cmp[it.title], d = c.d, u = c.u;
+    const cu = u === '%' ? 'pt' : u;
+    const diff = Number(c.v.toFixed(d)) - Number(it.fc.toFixed(d));
+    const cls = surpriseClass(x.direction, diff);
+    const word = Math.abs(diff) < 1e-9 ? '予想どおり' : diff > 0 ? '予想より上' : '予想より下';
+    return `<span class="fcline">${c.b ? `<small>${esc(c.b)}</small>` : ''}予想 <b>${fmt(it.fc, d)}${esc(u)}</b> → 結果 <b>${fmt(c.v, d)}${esc(u)}</b>
+      <span class="${cls} fcdiff">${word}${Math.abs(diff) < 1e-9 ? '' : `（${fmtSigned(diff, d)}${esc(cu)}）`}</span></span>`;
+  });
+  return `<span class="rfc">${lines.join('')}</span>`;
+}
+
+function fcControl() {
+  if (!FCS.available) return '';
+  if (FCS.items) return `<button class="btn fcbtn" id="fc-lock" type="button">予想を隠す</button>`;
+  if (FCS.open) {
+    return `<form class="fcform" id="fc-form" autocomplete="on">
+      <input type="text" name="username" value="macro-dashboard" autocomplete="username" hidden>
+      <input id="fc-pw" type="password" autocomplete="current-password" placeholder="パスワード" aria-label="予想を表示するパスワード" required>
+      <button class="btn" type="submit"${FCS.busy ? ' disabled' : ''}>${FCS.busy ? '確認中…' : '表示'}</button>
+      ${FCS.err ? `<span class="fcerr">${esc(FCS.err)}</span>` : ''}
+    </form>`;
+  }
+  return `<button class="btn fcbtn" id="fc-open" type="button">予想を表示（パスワード）</button>`;
+}
+
+function bindFc() {
+  const o = $('fc-open'); if (o) o.addEventListener('click', () => { FCS.open = true; renderRecent(); const i = $('fc-pw'); if (i) i.focus(); });
+  const l = $('fc-lock'); if (l) l.addEventListener('click', fcLock);
+  const fm = $('fc-form');
+  if (fm) fm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pw = $('fc-pw').value;
+    FCS.busy = true; renderRecent();
+    await fcUnlock(pw, false);
+    renderRecent();
+    if (!FCS.items) { FCS.open = true; const i = $('fc-pw'); if (i) i.focus(); }
+  });
+}
+
 function renderRecent() {
   const all = SUM.recent || [];
   const r = all.filter((x) => recentRange === 'all' || (TIER_ORDER[x.tier] ?? 9) <= RANGE_MAX.A);
@@ -163,8 +280,9 @@ function renderRecent() {
       <span class="range-label">表示範囲</span>
       <button class="rbtn rrange" data-rr="A" role="radio" aria-checked="${recentRange === 'A'}">重要以上</button>
       <button class="rbtn rrange" data-rr="all" role="radio" aria-checked="${recentRange === 'all'}">すべて</button>
-    </div>${hiddenN ? `<span class="note">　この範囲で隠れている発表：<b>${hiddenN}件</b></span>` : ''}`;
-  const bindToggle = () => document.querySelectorAll('.rrange').forEach((b) => b.addEventListener('click', () => { recentRange = b.dataset.rr; renderRecent(); }));
+    </div><span class="fcctl">${fcControl()}</span>${hiddenN ? `<span class="note">　この範囲で隠れている発表：<b>${hiddenN}件</b></span>` : ''}`;
+  const bindToggle = () => { document.querySelectorAll('.rrange').forEach((b) => b.addEventListener('click', () => { recentRange = b.dataset.rr; renderRecent(); })); bindFc(); };
+  const showFc = !!FCS.items;
   if (!r.length) {
     $('recent').innerHTML = toggle + `<p class="empty">${all.length ? 'この範囲に該当する発表はありません。' : '直近1週間に発表された指標はありません。'}</p>`;
     bindToggle(); return;
@@ -179,11 +297,15 @@ function renderRecent() {
       <span class="rval"><b>${fmt(x.latest, x.decimals)}</b>${esc(x.unit)}<small>${dateLabel(x.latest_date, x.freq)}分</small></span>
       <span class="rprev">前の期 ${fmt(x.prev, x.decimals)}${esc(x.unit)}</span>
       <span class="rchg ${changeClass(i, x.prev, x.latest)}">${arrow(x.change)} ${fmtSigned(x.change, x.decimals)}${esc(cu)}</span>
+      ${showFc ? fcCell(x) : ''}
       ${revHtml(x)}
     </div>`;
   }).join('');
-  $('recent').innerHTML = toggle + `<div class="rlist">${rows}</div>
-    <p class="note">日付は米国の発表日。「変化」は前の期との差。色は景気・物価にとって良い方向なら緑、悪い方向なら赤（金利など方向で良し悪しを決めない指標は黒）。「改定」は同じ期の数字が前回発表時から修正されたもの。市場予想との比較は未対応。</p>`;
+  const fcNote = showFc
+    ? `<p class="note"><b>予想</b>：市場予想（${esc(FCS.src.join('・') || 'Forex Factory')}）。比べる「結果」は予想と同じ基準（前月比・前年比など）でFREDの数値から計算しているため、上の数字と違うことがあります（例：CPIの前年比は公式発表と同じ季節調整なしの系列）。公式発表の丸めと0.1程度ずれることがあります。色は景気にとって良い外れ方なら緑（物価は予想より低いと緑）。予想は2026年10月12日の週から記録しています。</p>`
+    : (FCS.available ? '<p class="note">市場予想との比較は、パスワードを入力した端末だけに表示されます。</p>' : '');
+  $('recent').innerHTML = toggle + `<div class="rlist${showFc ? ' has-fc' : ''}">${rows}</div>
+    <p class="note">日付は米国の発表日。「変化」は前の期との差。色は景気・物価にとって良い方向なら緑、悪い方向なら赤（金利など方向で良し悪しを決めない指標は黒）。「改定」は同じ期の数字が前回発表時から修正されたもの。</p>${fcNote}`;
   bindToggle();
   document.querySelectorAll('.rrow').forEach((el) => {
     el.addEventListener('click', () => openModal(el.dataset.id));

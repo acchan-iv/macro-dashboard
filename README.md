@@ -66,9 +66,19 @@ mainに修正を反映した時も、その場で作り直す。
 - 雇用の判定ルールの候補比較（`config/indicators.json` の jobs → params → rule で切り替え：v1／v2／v2b／v2c）
 - 過去の判定の「直近24か月」表示、ページ上部の目次
 
+## 市場予想（パスワードを入れた端末だけ表示）
+
+「最近の発表結果」の「予想を表示（パスワード）」に入力すると、その端末だけに予想と結果の比較が出る（次回からは自動で表示。「予想を隠す」で端末から消える）。
+
+- 予想は Forex Factory の週間カレンダー。提供元が再公開を禁止しているため、**暗号化した形でしか置いていない**（`docs/data/fc.json`）。
+- 暗号：RSA-OAEP(SHA-256)＋AES-256-GCM。GitHub側は公開鍵（`config/fc_public.pem`）で暗号化するだけで、パスワードはGitHubにもページにも保存していない。秘密鍵はパスワードで暗号化して `docs/fc_key.json` に置いている（PBKDF2-SHA256 60万回）。
+- 無料で取れるのは今週分だけなので、毎回の実行で週ごとに貯めて21日分を残す。前週分（2026/10/12〜16）は初回だけ TradingView の値を取り込んだ（`config/fc_seed.json`）。
+- 比べる「結果」は予想と同じ基準でFREDから計算する（CPI・コアCPIの前年比は公式発表と同じ季節調整なし系列）。
+- パスワードを変える：Claudeに「予想のパスワードを変えて」と頼む（今のパスワードが必要。`scripts/fc_keygen.py --change`）。
+
 ## 元に戻したい時
 
-ブランチ `backup/2026-10-03` に改善前の状態を保存してある。Claudeに「バックアップに戻して」と頼めば戻せる。
+ブランチ `backup/2026-10-21`（予想表示の追加前）、`backup/2026-10-03`（改善一式の前）に保存してある。Claudeに「バックアップに戻して」と頼めば戻せる。
 
 ## AI連携
 
@@ -97,6 +107,7 @@ mainに修正を反映した時も、その場で作り直す。
 ```
 pip install -r requirements.txt
 python tests/test_rules.py                         # 判定ルールのテスト（実データの値で検算）
+python tests/test_forecast.py                      # 予想の暗号化・単位変換のテスト
 python tests/make_fixtures.py tests/fixtures       # 偽データを作る
 python scripts/build_data.py --offline tests/fixtures
 cd docs && python -m http.server 8000              # http://localhost:8000 で確認（テストデータの表示が出る）

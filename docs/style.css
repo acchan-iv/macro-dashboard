@@ -217,3 +217,21 @@ section[id] { scroll-margin-top: 56px; }
 .rrev { grid-column: 2 / -1; font-size: 13px; color: var(--text); }
 @media (max-width: 720px) { .rrev { grid-column: 1 / -1; grid-row: 5; } }
 table.t tr.used td { background: #eef6ee; }
+
+/* 市場予想（パスワードを入れた端末だけ） */
+.fcctl { margin-left: 12px; display: inline-flex; align-items: center; vertical-align: middle; }
+.fcform { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fcform input { font: inherit; padding: 4px 8px; border: 1px solid #5b6168; border-radius: 6px; width: 200px; color: var(--text); background: #fff; }
+.fcerr { color: #b42318; font-weight: 700; }
+.rlist.has-fc .rrow { grid-template-columns: 96px minmax(200px, 1.3fr) 1fr 1fr 0.9fr 1.7fr; }
+.rfc { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.fcline small { display: inline-block; min-width: 3.5em; margin-right: 4px; color: var(--text); font-weight: 700; font-size: 12px; }
+.fcdiff { font-weight: 700; margin-left: 4px; white-space: nowrap; }
+.fcnone { color: var(--text-2); font-size: 13px; }
+@media (max-width: 720px) {
+  .fcctl { margin: 0 0 8px; display: flex; }
+  .fcform input { width: 160px; }
+  .rlist.has-fc .rrow { grid-template-columns: 1fr auto; }
+  .rfc { grid-column: 1 / -1; grid-row: 5; padding: 4px 0; border-top: 1px dashed var(--line); }
+  .rlist.has-fc .rrev { grid-row: 6; }
+}
