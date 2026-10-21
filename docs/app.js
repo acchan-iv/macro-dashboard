@@ -206,11 +206,11 @@ function surpriseClass(dir, diff) {
 }
 
 // この発表・この基準の予想（発表日が同じものを優先、なければ前後1日）
-function fcLookup(x, key) {
-  if (!FCS.items || !key || key === 'disp') return null;
-  const same = FCS.items.find((it) => it.id === x.id && it.title === key && it.date === x.date);
-  if (same) return same;
-  return FCS.items.find((it) => it.id === x.id && it.title === key && Math.abs(new Date(it.date) - new Date(x.date)) <= 86400000) || null;
+function fcLookup(x, keys) {
+  if (!FCS.items || !keys || !keys.length) return null;
+  const ok = (it) => it.id === x.id && keys.includes(it.title);
+  return FCS.items.find((it) => ok(it) && it.date === x.date)
+    || FCS.items.find((it) => ok(it) && Math.abs(new Date(it.date) - new Date(x.date)) <= 86400000) || null;
 }
 
 // 前回との差の色：物価の前年比は2%に近づけば緑、物価のそれ以外（前月比など）は低いほど緑
@@ -221,7 +221,9 @@ function lineChangeClass(dir, basis, prev, v) {
   return surpriseClass(dir, diff);
 }
 
-const rnd = (v, d) => Number(Number(v).toFixed(d));
+// 四捨五入（公式発表と同じく0.05は切り上げ）。表示も差の計算もこの値を使い、表の数字と差が食い違わないようにする
+const rnd = (v, d) => { const p = 10 ** d, x = Number(v) * p; return Math.sign(x) * Math.round(Math.abs(x) + 1e-7) / p + 0; }; // +0 で −0 を 0 にする
+const fr = (v, d) => fmt(rnd(v, d), d);
 
 function fcControl() {
   if (!FCS.available) return '';
@@ -273,18 +275,19 @@ function renderRecent() {
     return lines.map((ln, k) => {
       const d = ln.d, u = esc(ln.u), cu = esc(ln.u === '%' ? 'pt' : ln.u);
       const v = ln.v, pv = ln.prev;
-      // 改定（前の期が修正された／同じ期の数字が修正された）は、画面の基準の行にだけ出す
+      // 改定（前の期が修正された／同じ期の数字が修正された）は、画面の基準の行にだけ出す。
+      // CPI・コアCPIの前年比は公式と同じ季節調整なし系列で出しており、この系列は改定されないため改定表示はない
       let rev = '';
       const rv = x.revision;
-      if (ln.disp && rv && rv.before !== null && rv.before !== undefined && Math.abs(rv.after - rv.before) >= 1e-9) {
-        rev = rv.type === 'prior' ? `<small class="rrev2">改定前 ${fmt(rv.before, d)}${u}</small>` : '';
+      if (ln.disp && rv && rv.before !== null && rv.before !== undefined && rnd(rv.after, d) !== rnd(rv.before, d)) {
+        rev = rv.type === 'prior' ? `<small class="rrev2">改定前 ${fr(rv.before, d)}${u}</small>` : '';
       }
-      const sameRev = (ln.disp && rv && rv.type === 'same' && rv.before !== null && Math.abs(rv.after - rv.before) >= 1e-9)
-        ? `<small class="rrev2">前回発表時 ${fmt(rv.before, d)}${u}</small>` : '';
+      const sameRev = (ln.disp && rv && rv.type === 'same' && rv.before !== null && rnd(rv.after, d) !== rnd(rv.before, d))
+        ? `<small class="rrev2">前回発表時 ${fr(rv.before, d)}${u}</small>` : '';
       let fcTd = '', diffTd;
       if (showFc) {
-        const fc = fcLookup(x, ln.key);
-        fcTd = `<td class="c-fc" data-l="予想">${fc ? `${fmt(fc.fc, d)}${u}` : '<span class="na">—</span>'}</td>`;
+        const fc = fcLookup(x, ln.keys || (ln.key && ln.key !== 'disp' ? [ln.key] : []));
+        fcTd = `<td class="c-fc" data-l="予想">${fc ? `${fr(fc.fc, d)}${u}` : '<span class="na">—</span>'}</td>`;
         if (fc && v !== null) {
           const diff = rnd(v, d) - rnd(fc.fc, d);
           const zero = Math.abs(diff) < 1e-9;
@@ -300,15 +303,15 @@ function renderRecent() {
         : `<td class="c-name sub"><span class="basis">${esc(ln.b)}</span></td>`;
       return `<tr class="rline${first ? ' first' : ''}" tabindex="0" data-id="${x.id}">
         <td class="c-date">${first ? mdw(x.date) : ''}</td>${nameTd}
-        <td class="c-prev" data-l="前回">${pv === null || pv === undefined ? '<span class="na">—</span>' : `${fmt(pv, d)}${u}`}${rev}</td>
-        ${fcTd}<td class="c-res" data-l="結果"><b>${v === null ? '—' : fmt(v, d)}</b>${v === null ? '' : u}${ln.est ? '<small class="est">推定</small>' : ''}${sameRev}</td>
+        <td class="c-prev" data-l="前回">${pv === null || pv === undefined ? '<span class="na">—</span>' : `${fr(pv, d)}${u}`}${rev}</td>
+        ${fcTd}<td class="c-res" data-l="結果"><b>${v === null ? '—' : fr(v, d)}</b>${v === null ? '' : u}${ln.est ? '<small class="est">推定</small>' : ''}${sameRev}</td>
         ${diffTd}</tr>`;
     }).join('');
   }).join('');
   const fcNote = showFc
     ? `<p class="note"><b>予想</b>：市場予想（${esc(FCS.src.join('・') || 'Forex Factory')}）。予想は2026年10月12日の週から記録しています。「—」は予想のない基準です。結果は予想と同じ基準でFREDの数値から計算しています（CPI・コアCPIの前年比は公式発表と同じ季節調整なしの系列）。</p>`
     : (FCS.available ? '<p class="note">市場予想との比較は、パスワードを入力した端末だけに表示されます。</p>' : '');
-  $('recent').innerHTML = toggle + `<p class="legend">色の見方：<span class="up-good">緑</span>＝景気・物価にとって良い、<span class="down-bad">赤</span>＝悪い（物価は低いほど緑）。株価の反応とは逆になることがあります。</p>
+  $('recent').innerHTML = toggle + `<p class="rlegend">色の見方：<span class="up-good">緑</span>＝景気・物価にとって良い、<span class="down-bad">赤</span>＝悪い（物価は低いほど緑）。株価の反応とは逆になることがあります。</p>
     <div class="rwrap"><table class="rtable${showFc ? ' has-fc' : ''}">${head}<tbody>${body}</tbody></table></div>
     <p class="note">日付は米国の発表日。数値は公式発表と同じ桁に丸めています（細かい桁は行を押すと出る詳細画面）。「改定前」は前回の数字が今回の発表で修正されたときの修正前の値。「推定」は1年前の月が未発表（2025年10月の政府閉鎖）のため前後の月から推定した前年比。黒は良し悪しを決めない指標。</p>${fcNote}`;
   bindToggle();

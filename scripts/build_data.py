@@ -154,6 +154,12 @@ def lag_by(s: pd.Series, k: int, freq: str) -> pd.Series:
     月次・四半期・週次は「日付で1期前」をたどる。前の期の値がなければ NaN。日次は営業日の数で数える"""
     if freq not in STEP or len(s) == 0:
         return s.shift(k)
+    if freq in ("M", "Q"):
+        # 月・四半期の「期」で合わせる（月初・月末どちらの日付でもずれない）
+        per = s.index.to_period(freq)
+        by_per = pd.Series(s.values, index=per)
+        by_per = by_per[~by_per.index.duplicated(keep="last")]
+        return pd.Series(by_per.reindex(per - k).values, index=s.index)
     moved = s.copy()
     moved.index = moved.index + STEP[freq] * k
     moved = moved[~moved.index.duplicated(keep="last")]
@@ -299,7 +305,9 @@ def indicator_metrics(ind: dict, raw: pd.Series, v: pd.Series, settings: dict, t
     changes = (vv - lag_by(vv, k, ind["freq"])).dropna()
     hist = changes[changes.index >= changes.index[-1] - pd.DateOffset(years=20)] if len(changes) else changes
     z = None
-    if len(hist) > 30 and hist.std() > 0:
+    # 最新の期の変化が計算できない（前の期が欠けている）時は、古い変化で「大きな変化」を出さない
+    latest_change_ok = len(changes) > 0 and changes.index[-1] == vv.index[-1]
+    if latest_change_ok and len(hist) > 30 and hist.std() > 0:
         z = float((hist.iloc[-1] - hist.mean()) / hist.std())
 
     win = vv[vv.index >= last_date - pd.DateOffset(years=settings["percentile_years"])]
@@ -316,7 +324,7 @@ def indicator_metrics(ind: dict, raw: pd.Series, v: pd.Series, settings: dict, t
         "year_ago": f(ya), "yoy_change": f(last - ya) if ya is not None else None,
         "ma": f(ma),
         # z値は CHANGE_LAG 期間の変化で計算する（日次は5営業日）。表示もその期間の変化に合わせる
-        "z": f(z, 2), "z_move": f(hist.iloc[-1]) if len(hist) else None,
+        "z": f(z, 2), "z_move": f(hist.iloc[-1]) if len(hist) and latest_change_ok else None,
         "z_span": {"D": "5営業日", "W": "前週から", "M": "前月から", "Q": "前期から"}[ind["freq"]],
         "big_move": False,  # 発表の新しさを確認してから main で決める
         "percentile_10y": f(pct, 0),
@@ -1040,8 +1048,8 @@ def main() -> int:
             if iid != x["id"]:
                 continue
             unit, dec = forecast.spec_unit(title, x["unit"])
-            ln = {"key": title, "b": forecast.basis_label(title) or disp_label, "u": unit, "d": dec, "disp": how == "disp",
-                  "est": False}
+            ln = {"key": title, "keys": [title], "b": forecast.basis_label(title) or disp_label, "u": unit, "d": dec,
+                  "disp": how == "disp", "est": False}
             if how == "disp":
                 ln.update(v=x["latest"], prev=x["prev"], d=disp_dec if unit == "%" else dec, est=x.get("latest_est", False))
             else:
@@ -1057,13 +1065,19 @@ def main() -> int:
                 else:
                     ser = raw * how[2]
                     ln["b"] = "件数（年率）"
+                ser = ser.replace([math.inf, -math.inf], math.nan)
                 pv = ser.get(ld - STEP["M"])
                 ln.update(v=f(ser.get(ld)), prev=f(pv) if pv is not None and not math.isnan(pv) else None)
             if ln.get("v") is None:
                 continue
+            # 同じ基準の行は1本にまとめる（GDPの速報・改定・確定は同じ数字なので1行。予想の名前は keys に並べる）
+            dup = next((l for l in lines if l["disp"] and ln["disp"] and l["b"] == ln["b"]), None)
+            if dup:
+                dup["keys"].append(title)
+                continue
             lines.append(ln)
         if not any(l["disp"] or l["b"] == disp_label for l in lines):
-            lines.append({"key": "disp", "b": disp_label, "u": x["unit"], "d": disp_dec, "disp": True,
+            lines.append({"key": "disp", "keys": [], "b": disp_label, "u": x["unit"], "d": disp_dec, "disp": True,
                           "v": x["latest"], "prev": x["prev"], "est": x.get("latest_est", False)})
         lines.sort(key=lambda l: LINE_ORDER.get(l["b"], 9))
         x["lines"] = lines

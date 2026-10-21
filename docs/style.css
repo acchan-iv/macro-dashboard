@@ -154,7 +154,7 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
 .aibox .btn { font-weight: 700; }
 
 /* 最近の発表結果（表） */
-.legend { margin: 0 0 8px; font-size: 14px; }
+.rlegend { margin: 0 0 8px; font-size: 14px; }
 .rwrap { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .rtable { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .rtable th { text-align: left; font-size: 13px; font-weight: 700; padding: 8px 10px; border-bottom: 2px solid var(--text); background: #f6f7f8; white-space: nowrap; }

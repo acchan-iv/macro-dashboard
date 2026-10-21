@@ -49,7 +49,23 @@ d = b.transform(pd.Series([100.0, 103.0, 110.0], index=pd.to_datetime(["2025-09-
                 {"transform": "diff", "freq": "M"})
 check("前月差：前月が欠けていれば出さない", math.isnan(d.iloc[1]) and d.iloc[2] == 7.0)
 
-ya = b.value_year_ago(y.dropna(), "M")
-check("1年前の値も日付で探す", ya is None or isinstance(ya, float))
+v = pd.Series([1.0, 2.0, 3.0], index=pd.to_datetime(["2025-09-01", "2025-11-01", "2026-09-01"]))
+check("1年前の値は日付で探す（2025年9月）", b.value_year_ago(v, "M") == 1.0)
+v2 = pd.Series([1.0, 2.0, 3.0], index=pd.to_datetime(["2025-09-01", "2025-11-01", "2026-10-01"]))
+check("1年前の月が欠けていれば出さない（前の月で代用しない）", b.value_year_ago(v2, "M") is None)
+
+me = pd.Series([100.0, 101.0, 102.0], index=pd.to_datetime(["2026-01-31", "2026-02-28", "2026-03-31"]))
+mm = b.transform(me, {"transform": "mom_pct", "freq": "M"})
+check("月末の日付でも前月比が出る", not math.isnan(mm.iloc[1]) and not math.isnan(mm.iloc[2]))
+qe = pd.Series([1.0, 2.0], index=pd.to_datetime(["2026-03-31", "2026-06-30"]))
+check("四半期末の日付でも前期差が出る", b.transform(qe, {"transform": "diff", "freq": "Q"}).iloc[1] == 1.0)
+
+# 最新の月の前の月が欠けている時、古い変化で「大きな変化」を出さない
+idx = pd.date_range("2015-01-01", "2025-09-01", freq="MS").append(pd.DatetimeIndex(["2025-11-01"]))
+vals = pd.Series([2.0 + (i % 5) * 0.01 for i in range(len(idx))], index=idx)
+vals.iloc[-2] = 5.0  # 2025年9月に大きな変化
+ind = {"freq": "M", "direction": "up", "transform": "none", "pub_lag_days": 30}
+mt = b.indicator_metrics(ind, vals, vals, {"percentile_years": 10}, pd.Timestamp("2025-12-15").date())
+check("前の月が欠けた直後はz値を出さない", mt["z"] is None and mt["z_move"] is None, f"z={mt['z']}")
 
 sys.exit(0 if ok else 1)
