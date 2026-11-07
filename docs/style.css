@@ -164,6 +164,13 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
 .rtable tr.first td { border-top: 1px solid #9aa0a6; padding-top: 10px; }
 .rtable tbody tr.first:first-child td { border-top: 0; }
 .rtable tr.rline { cursor: pointer; }
+/* 予定と発表済みの見出し行 */
+.rtable tr.grp th { text-align: left; font-size: 15px; font-weight: 700; padding: 8px 10px; background: #eef0f2; border-top: 2px solid var(--text); border-bottom: 1px solid #9aa0a6; }
+.rtable tbody tr.grp:first-child th { border-top: 0; }
+.rtable tr.grp + tr.first td { border-top: 0; }
+.rtable tr.grp-empty td { padding: 10px; color: var(--text-2); }
+.rtable .pending { color: var(--text-2); font-weight: 700; }
+.rtable small.jst { display: block; font-size: 12px; font-weight: 700; margin-top: 2px; }
 /* 縦の罫線（列の区切り） */
 .rtable th + th, .rtable td + td { border-left: 1px solid #b8bcc2; }
 .rtable tr.rline:hover td, .rtable tr.rline:focus-visible td { background: #f3f4f6; outline: none; }
@@ -188,6 +195,9 @@ table.t td:first-child, table.t th:first-child { text-align: left; white-space: 
   .rtable tr.first td { border-top: 0; padding-top: 0; }
   .rtable td { padding: 0; }
   .rtable td + td { border-left: 0; }
+  .rtable tr.grp, .rtable tr.grp-empty { display: block; }
+  .rtable tr.grp th, .rtable tr.grp-empty td { display: block; border-left: 0; }
+  .rtable .c-date small.jst { display: inline; margin-left: 6px; }
   /* スマホ：前回｜予想｜結果 の間に縦線 */
   .rtable td.c-fc, .rtable td.c-res { border-left: 1px solid #b8bcc2; padding-left: 8px; }
   .rtable .c-date, .rtable .c-name, .rtable .c-diff { grid-column: 1 / -1; text-align: left; }

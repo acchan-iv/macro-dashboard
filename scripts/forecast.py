@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_KEY_PATH = ROOT / "config" / "fc_public.pem"
 SEED_PATH = ROOT / "config" / "fc_seed.json"
 FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+FF_URL_NEXT = "https://nfs.faireconomy.media/ff_calendar_nextweek.json"  # 来週分（公開されていない時は使わない）
 KEEP_DAYS = 21
 
 # Forex Factoryの指標名 → (このツールの指標ID, 結果の出し方)
@@ -146,21 +147,24 @@ def load_private_key(key_file: Path, password: str):
 # ----------------------------------------------------------------------------
 # 取得・保存
 # ----------------------------------------------------------------------------
-def fetch_ff(offline_dir: Path | None, warnings: list[str]) -> list[dict] | None:
+def fetch_ff(offline_dir: Path | None, warnings: list[str], url: str = FF_URL, quiet: bool = False) -> list[dict] | None:
     if offline_dir:
-        f = offline_dir / "_ff.json"
+        f = offline_dir / ("_ff.json" if url == FF_URL else "_ff_next.json")
         return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
     err = ""
-    for attempt in range(3):
+    for attempt in range(1 if quiet else 3):
         try:
-            r = requests.get(FF_URL, timeout=30, headers={"User-Agent": "Mozilla/5.0 (personal macro dashboard)"})
+            r = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0 (personal macro dashboard)"})
             if r.ok:
-                return r.json()
+                data = r.json()
+                return data if isinstance(data, list) else None
             err = f"HTTP {r.status_code}"
         except Exception as e:  # noqa: BLE001
             err = type(e).__name__
-        time.sleep(10 * (attempt + 1))
-    warnings.append(f"市場予想の取得に失敗（{err}）。前回までに貯めた予想だけ表示します")
+        if not quiet:
+            time.sleep(10 * (attempt + 1))
+    if not quiet:
+        warnings.append(f"市場予想の取得に失敗（{err}）。前回までに貯めた予想だけ表示します")
     return None
 
 
@@ -181,9 +185,9 @@ def week_items(events: list[dict], disp_units: dict[str, str]) -> tuple[str, lis
         iid = TITLE_SPEC[t][0]
         unit, _ = spec_unit(t, disp_units.get(iid, ""))
         fc = parse_forecast(e.get("forecast", ""), unit)
-        if fc is None:
-            continue
-        items.append({"id": iid, "date": e["date"][:10], "title": t, "fc": round(fc, 4), "fcs": e.get("forecast", "")})
+        # 予想がまだ出ていない指標も、発表時刻（米東部、時差つき）のために残す
+        items.append({"id": iid, "date": e["date"][:10], "time": e.get("date", ""), "title": t,
+                      "fc": round(fc, 4) if fc is not None else None, "fcs": e.get("forecast", "")})
     return week, items
 
 
@@ -213,14 +217,19 @@ def build(out_path: Path, today: dt.date, disp_units: dict[str, str], site_url: 
         weeks.update(json.loads(SEED_PATH.read_text(encoding="utf-8")).get("weeks", {}))
     weeks.update(load_previous(site_url, bool(offline_dir)))
     info = {"fetched": False, "items": 0}
-    events = fetch_ff(offline_dir, warnings)
-    got = week_items(events, disp_units) if events else None
-    if got:
+    for url, quiet in ((FF_URL, False), (FF_URL_NEXT, True)):
+        events = fetch_ff(offline_dir, warnings, url, quiet)
+        got = week_items(events, disp_units) if events else None
+        if not got:
+            continue
         week, items = got
         blob = encrypt_blob({"src": "Forex Factory", "items": items}, pem)
         blob["updated"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
         weeks[week] = blob
-        info = {"fetched": True, "items": len(items), "week": week}
+        if url == FF_URL:
+            info.update(fetched=True, items=len(items), week=week)
+        else:
+            info["next_week"] = week
     cutoff = (today - dt.timedelta(days=KEEP_DAYS)).isoformat()
     weeks = {k: v for k, v in sorted(weeks.items()) if k >= cutoff}
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -993,6 +993,16 @@ def main() -> int:
                 for d, x in sorted(cal.items())]
     tier_label = settings.get("tier_labels", {})
 
+    # これからの発表（今日から7日。画面では重要度で絞ったあと、近い2つの発表日だけを出す）
+    soon_end = (today + dt.timedelta(days=7)).isoformat()
+    soon = [
+        {"date": i["next_release"], "id": i["id"], "name": i["name"], "tier": i.get("tier"), "latest": i["latest"],
+         "latest_date": i["latest_date"], "prev": i["prev"], "unit": i["unit"], "decimals": i["decimals"],
+         "direction": i["direction"], "freq": i["freq"], "latest_est": i.get("latest_est", False)}
+        for i in ind_out if i.get("ok") and i.get("next_release") and i["next_release"] <= soon_end
+    ]
+    soon.sort(key=lambda x: (x["date"], TIER_ORDER.get(x["tier"], 9), x["name"]))
+
     # 最近の発表結果（直近1週間に発表があった指標。新しい順→重要度順）
     recent = [
         {"date": i["last_release"], "id": i["id"], "name": i["name"], "tier": i.get("tier"), "latest": i["latest"],
@@ -1027,7 +1037,7 @@ def main() -> int:
 
     # 市場予想と比べるための「結果」（予想と同じ基準で計算した公開データ。予想値そのものはここに入れない）
     fred_raw = {ind["fred"]: raws[ind["id"]] for ind in cfg["indicators"] if not ind.get("derived") and ind["id"] in raws}
-    if recent:
+    if recent or soon:
         for sid in forecast.EXTRA_SERIES:
             try:
                 fred_raw[sid] = fred.observations(sid, (today - dt.timedelta(days=4 * 365)).isoformat())
@@ -1037,7 +1047,8 @@ def main() -> int:
     # 表の行：基準（前年比・前月比など）ごとに「前回・結果」を同じ基準・公式発表と同じ桁でそろえる。
     # 市場予想がある基準は、予想と同じ計算方法で出す（予想値そのものはここに入れない＝公開データだけ）
     ind_by_id2 = {i["id"]: i for i in cfg["indicators"]}
-    for x in recent:
+
+    def build_lines(x: dict) -> None:
         ind = ind_by_id2[x["id"]]
         x["base_name"] = BASIS_SUFFIX.sub("", x["name"])
         disp_label = LINE_BASIS.get(ind["transform"], "")
@@ -1081,6 +1092,9 @@ def main() -> int:
                           "v": x["latest"], "prev": x["prev"], "est": x.get("latest_est", False)})
         lines.sort(key=lambda l: LINE_ORDER.get(l["b"], 9))
         x["lines"] = lines
+
+    for x in recent + soon:
+        build_lines(x)
 
     fc_info = forecast.build(OUT_DIR / "fc.json", today, {i["id"]: i.get("unit", "") for i in cfg["indicators"]},
                              os.environ.get("SITE_URL"), args.offline, fred.warnings)
@@ -1128,7 +1142,7 @@ def main() -> int:
         **common,
         "questions": q_out,
         "cycle": cycle_now if settings.get("show_cycle") else None,
-        "notable": notable, "stale": stale, "upcoming": upcoming, "recent": recent,
+        "notable": notable, "stale": stale, "upcoming": upcoming, "recent": recent, "soon": soon,
         "headline": headline, "recession_prob": rprob, "fc_info": fc_info,
         "failed": failed, "fallback_used": fallback_used, "warnings": fred.warnings,
         "handoff_text": "\n".join(lines),

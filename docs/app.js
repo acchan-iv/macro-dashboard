@@ -253,67 +253,96 @@ function bindFc() {
   });
 }
 
+// FFの発表時刻（米東部・時差つき）を日本時間で。米国の発表日と日本の日付が違う時（10:00発表→日本0:00）は日付も付ける
+function jstTime(iso, usDate) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return '';
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(d).map((x) => [x.type, x.value]));
+  const ymd = `${p.year}-${p.month}-${p.day}`, hm = `${Number(p.hour)}:${p.minute}`;
+  return ymd === usDate ? hm : `${Number(p.month)}/${Number(p.day)} ${hm}`;
+}
+
+const inRecentRange = (x) => recentRange === 'all' || (TIER_ORDER[x.tier] ?? 9) <= RANGE_MAX.A;
+
+function recentRows(x, showFc, soon) {
+  const lines = (x.lines && x.lines.length) ? x.lines
+    : [{ key: 'disp', b: '', u: x.unit, d: x.decimals, disp: true, v: x.latest, prev: x.prev, est: x.latest_est }];
+  return lines.map((ln, k) => {
+    const d = ln.d, u = esc(ln.u), cu = esc(ln.u === '%' ? 'pt' : ln.u);
+    // 予定の行：前回＝今出ている最新の値、結果＝未発表
+    const v = soon ? null : ln.v, pv = soon ? ln.v : ln.prev;
+    const fc = showFc ? fcLookup(x, ln.keys || (ln.key && ln.key !== 'disp' ? [ln.key] : [])) : null;
+    let rev = '', sameRev = '';
+    const rv = x.revision;
+    if (!soon && ln.disp && rv && rv.before !== null && rv.before !== undefined && rnd(rv.after, d) !== rnd(rv.before, d)) {
+      // 改定（前の期の修正／同じ期の修正）は画面の基準の行にだけ出す。CPI・コアCPIの前年比（季節調整なし系列）は改定されない
+      if (rv.type === 'prior') rev = `<small class="rrev2">改定前 ${fr(rv.before, d)}${u}</small>`;
+      if (rv.type === 'same') sameRev = `<small class="rrev2">前回発表時 ${fr(rv.before, d)}${u}</small>`;
+    }
+    const fcTd = showFc ? `<td class="c-fc" data-l="予想">${fc && fc.fc !== null && fc.fc !== undefined ? `${fr(fc.fc, d)}${u}` : '<span class="na">—</span>'}</td>` : '';
+    let diffTd = '<td class="c-diff empty"><span class="na">—</span></td>';
+    if (!soon && showFc && fc && fc.fc !== null && fc.fc !== undefined && v !== null) {
+      const diff = rnd(v, d) - rnd(fc.fc, d);
+      const zero = Math.abs(diff) < 1e-9;
+      diffTd = `<td class="c-diff ${surpriseClass(x.direction, diff)}">${zero ? '予想どおり' : `${fmtSigned(diff, d)}${cu} ${diff > 0 ? '上振れ' : '下振れ'}`}</td>`;
+    } else if (!soon && !showFc && pv !== null && pv !== undefined && v !== null) {
+      const diff = rnd(v, d) - rnd(pv, d);
+      diffTd = `<td class="c-diff ${lineChangeClass(x.direction, ln.b, rnd(pv, d), rnd(v, d))}">${Math.abs(diff) < 1e-9 ? '変わらず' : `${arrow(diff)} ${fmtSigned(diff, d)}${cu}`}</td>`;
+    }
+    const first = k === 0;
+    const per = soon ? `前回は${dateLabel(x.latest_date, x.freq)}分` : `${dateLabel(x.latest_date, x.freq)}分`;
+    const nameTd = first
+      ? `<td class="c-name">${tierChip(x.tier)}<b class="iname">${esc(x.base_name || x.name)}</b>${ln.b ? `<span class="basis">${esc(ln.b)}</span>` : ''}${x.big_move ? '<span class="big">大きな変化</span>' : ''}<small class="per">${per}</small></td>`
+      : `<td class="c-name sub"><span class="basis">${esc(ln.b)}</span></td>`;
+    // 予定の行は、予想データに発表時刻があれば日本時間を出す（パスワードを入れた端末のみ）
+    let dateTd = '';
+    if (first) {
+      // 発表時刻は、どれかの基準の予想データに入っていれば使う（同じ発表なので時刻は同じ）
+      const tItem = soon && showFc ? lines.map((l) => fcLookup(x, l.keys || [])).find((it) => it && it.time) : null;
+      const t = tItem ? jstTime(tItem.time, x.date) : '';
+      dateTd = mdw(x.date) + (t ? `<small class="jst">日本時間 ${esc(t)}</small>` : '');
+    }
+    const res = soon ? '<span class="pending">未発表</span>'
+      : `<b>${v === null ? '—' : fr(v, d)}</b>${v === null ? '' : u}${ln.est ? '<small class="est">推定</small>' : ''}${sameRev}`;
+    return `<tr class="rline${first ? ' first' : ''}${soon ? ' soon' : ''}" tabindex="0" data-id="${x.id}">
+      <td class="c-date">${dateTd}</td>${nameTd}
+      <td class="c-prev" data-l="前回">${pv === null || pv === undefined ? '<span class="na">—</span>' : `${fr(pv, d)}${u}`}${rev}</td>
+      ${fcTd}<td class="c-res" data-l="結果">${res}</td>
+      ${diffTd}</tr>`;
+  }).join('');
+}
+
 function renderRecent() {
   const all = SUM.recent || [];
-  const r = all.filter((x) => recentRange === 'all' || (TIER_ORDER[x.tier] ?? 9) <= RANGE_MAX.A);
-  const hiddenN = all.length - r.length;
-  const toggle = `<div class="range" role="radiogroup" aria-label="最近の発表結果の表示範囲" style="margin-bottom:8px">
+  const r = all.filter(inRecentRange);
+  // これからの発表：重要度で絞ったあと、近い2つの発表日の分だけ
+  const soonAll = (SUM.soon || []).filter(inRecentRange);
+  const soonDates = [...new Set(soonAll.map((x) => x.date))].slice(0, 2);
+  const soon = soonAll.filter((x) => soonDates.includes(x.date));
+  const hiddenN = (all.length - r.length) + (SUM.soon || []).filter((x) => soonDates.includes(x.date) && !inRecentRange(x)).length;
+  const toggle = `<div class="range" role="radiogroup" aria-label="発表の表示範囲" style="margin-bottom:8px">
       <span class="range-label">表示範囲</span>
       <button class="rbtn rrange" data-rr="A" role="radio" aria-checked="${recentRange === 'A'}">重要以上</button>
       <button class="rbtn rrange" data-rr="all" role="radio" aria-checked="${recentRange === 'all'}">すべて</button>
     </div><span class="fcctl">${fcControl()}</span>${hiddenN ? `<span class="note">　この範囲で隠れている発表：<b>${hiddenN}件</b></span>` : ''}`;
   const bindToggle = () => { document.querySelectorAll('.rrange').forEach((b) => b.addEventListener('click', () => { recentRange = b.dataset.rr; renderRecent(); })); bindFc(); };
   const showFc = !!FCS.items;
-  if (!r.length) {
-    $('recent').innerHTML = toggle + `<p class="empty">${all.length ? 'この範囲に該当する発表はありません。' : '直近1週間に発表された指標はありません。'}</p>`;
-    bindToggle(); return;
-  }
+  const ncol = showFc ? 6 : 5;
   const head = `<thead><tr><th class="c-date">日付</th><th class="c-name">指標</th><th class="c-prev">前回</th>${showFc ? '<th class="c-fc">予想</th>' : ''}<th class="c-res">結果</th><th class="c-diff">${showFc ? '予想との差' : '前回との差'}</th></tr></thead>`;
-  const body = r.map((x) => {
-    const lines = (x.lines && x.lines.length) ? x.lines
-      : [{ key: 'disp', b: '', u: x.unit, d: x.decimals, disp: true, v: x.latest, prev: x.prev, est: x.latest_est }];
-    return lines.map((ln, k) => {
-      const d = ln.d, u = esc(ln.u), cu = esc(ln.u === '%' ? 'pt' : ln.u);
-      const v = ln.v, pv = ln.prev;
-      // 改定（前の期が修正された／同じ期の数字が修正された）は、画面の基準の行にだけ出す。
-      // CPI・コアCPIの前年比は公式と同じ季節調整なし系列で出しており、この系列は改定されないため改定表示はない
-      let rev = '';
-      const rv = x.revision;
-      if (ln.disp && rv && rv.before !== null && rv.before !== undefined && rnd(rv.after, d) !== rnd(rv.before, d)) {
-        rev = rv.type === 'prior' ? `<small class="rrev2">改定前 ${fr(rv.before, d)}${u}</small>` : '';
-      }
-      const sameRev = (ln.disp && rv && rv.type === 'same' && rv.before !== null && rnd(rv.after, d) !== rnd(rv.before, d))
-        ? `<small class="rrev2">前回発表時 ${fr(rv.before, d)}${u}</small>` : '';
-      let fcTd = '', diffTd;
-      if (showFc) {
-        const fc = fcLookup(x, ln.keys || (ln.key && ln.key !== 'disp' ? [ln.key] : []));
-        fcTd = `<td class="c-fc" data-l="予想">${fc ? `${fr(fc.fc, d)}${u}` : '<span class="na">—</span>'}</td>`;
-        if (fc && v !== null) {
-          const diff = rnd(v, d) - rnd(fc.fc, d);
-          const zero = Math.abs(diff) < 1e-9;
-          diffTd = `<td class="c-diff ${surpriseClass(x.direction, diff)}">${zero ? '予想どおり' : `${fmtSigned(diff, d)}${cu} ${diff > 0 ? '上振れ' : '下振れ'}`}</td>`;
-        } else diffTd = '<td class="c-diff empty"><span class="na">—</span></td>';
-      } else if (pv !== null && pv !== undefined && v !== null) {
-        const diff = rnd(v, d) - rnd(pv, d);
-        diffTd = `<td class="c-diff ${lineChangeClass(x.direction, ln.b, rnd(pv, d), rnd(v, d))}">${Math.abs(diff) < 1e-9 ? '変わらず' : `${arrow(diff)} ${fmtSigned(diff, d)}${cu}`}</td>`;
-      } else diffTd = '<td class="c-diff empty"><span class="na">—</span></td>';
-      const first = k === 0;
-      const nameTd = first
-        ? `<td class="c-name">${tierChip(x.tier)}<b class="iname">${esc(x.base_name || x.name)}</b>${ln.b ? `<span class="basis">${esc(ln.b)}</span>` : ''}${x.big_move ? '<span class="big">大きな変化</span>' : ''}<small class="per">${dateLabel(x.latest_date, x.freq)}分</small></td>`
-        : `<td class="c-name sub"><span class="basis">${esc(ln.b)}</span></td>`;
-      return `<tr class="rline${first ? ' first' : ''}" tabindex="0" data-id="${x.id}">
-        <td class="c-date">${first ? mdw(x.date) : ''}</td>${nameTd}
-        <td class="c-prev" data-l="前回">${pv === null || pv === undefined ? '<span class="na">—</span>' : `${fr(pv, d)}${u}`}${rev}</td>
-        ${fcTd}<td class="c-res" data-l="結果"><b>${v === null ? '—' : fr(v, d)}</b>${v === null ? '' : u}${ln.est ? '<small class="est">推定</small>' : ''}${sameRev}</td>
-        ${diffTd}</tr>`;
-    }).join('');
-  }).join('');
+  const grp = (t) => `<tr class="grp"><th colspan="${ncol}">${t}</th></tr>`;
+  const soonBody = soon.length
+    ? grp('これからの発表（近い2つの発表日）') + soon.map((x) => recentRows(x, showFc, true)).join('')
+    : grp('これからの発表') + `<tr class="grp-empty"><td colspan="${ncol}">この範囲で、今後7日以内に発表予定の指標はありません。</td></tr>`;
+  const doneBody = r.length
+    ? grp('発表済み（直近1週間）') + r.map((x) => recentRows(x, showFc, false)).join('')
+    : grp('発表済み（直近1週間）') + `<tr class="grp-empty"><td colspan="${ncol}">${all.length ? 'この範囲に該当する発表はありません。' : '直近1週間に発表された指標はありません。'}</td></tr>`;
   const fcNote = showFc
-    ? `<p class="note"><b>予想</b>：市場予想（${esc(FCS.src.join('・') || 'Forex Factory')}）。予想は2026年10月12日の週から記録しています。「—」は予想のない基準です。結果は予想と同じ基準でFREDの数値から計算しています（CPI・コアCPIの前年比は公式発表と同じ季節調整なしの系列）。</p>`
-    : (FCS.available ? '<p class="note">市場予想との比較は、パスワードを入力した端末だけに表示されます。</p>' : '');
+    ? `<p class="note"><b>予想</b>：市場予想（${esc(FCS.src.join('・') || 'Forex Factory')}）。予想は2026年10月12日の週から記録しています。「—」は予想のない基準です（来週分の予想は、提供元が公開してから表示されます）。結果は予想と同じ基準でFREDの数値から計算しています（CPI・コアCPIの前年比は公式発表と同じ季節調整なしの系列）。</p>`
+    : (FCS.available ? '<p class="note">市場予想と発表時刻（日本時間）は、パスワードを入力した端末だけに表示されます。</p>' : '');
   $('recent').innerHTML = toggle + `<p class="rlegend">色の見方：<span class="up-good">緑</span>＝景気・物価にとって良い、<span class="down-bad">赤</span>＝悪い（物価は低いほど緑）。株価の反応とは逆になることがあります。</p>
-    <div class="rwrap"><table class="rtable${showFc ? ' has-fc' : ''}">${head}<tbody>${body}</tbody></table></div>
-    <p class="note">日付は米国の発表日。数値は公式発表と同じ桁に丸めています（細かい桁は行を押すと出る詳細画面）。「改定前」は前回の数字が今回の発表で修正されたときの修正前の値。「推定」は1年前の月が未発表（2025年10月の政府閉鎖）のため前後の月から推定した前年比。黒は良し悪しを決めない指標。</p>${fcNote}`;
+    <div class="rwrap"><table class="rtable${showFc ? ' has-fc' : ''}">${head}<tbody>${soonBody}${doneBody}</tbody></table></div>
+    <p class="note">日付は米国の発表日（日本では同じ日の夜〜翌日の未明）。予定の行の「前回」は、いま出ている最新の値です。数値は公式発表と同じ桁に丸めています（細かい桁は行を押すと出る詳細画面）。「改定前」は前回の数字が今回の発表で修正されたときの修正前の値。「推定」は1年前の月が未発表（2025年10月の政府閉鎖）のため前後の月から推定した前年比。黒は良し悪しを決めない指標。</p>${fcNote}`;
   bindToggle();
   document.querySelectorAll('.rline').forEach((el) => {
     el.addEventListener('click', () => openModal(el.dataset.id));
